@@ -609,15 +609,6 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     }
   }
 
-  // Clean up removed participants if in edit mode
-  const removedPartIds = currentPartIds.filter((id) => !participantIds.includes(id));
-  if (removedPartIds.length > 0) {
-    await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
-      method: "DELETE",
-      headers: { "xc-token": token, "Content-Type": "application/json" },
-      body: JSON.stringify(removedPartIds.map((id) => ({ Id: id }))),
-    });
-  }
 
   // Sync Supporting Resources
   const rawResources = clampArray(payload.resources, MAX_RESOURCES);
@@ -661,15 +652,6 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     }
   }
 
-  // Clean up removed resources if in edit mode
-  const removedResIds = currentResIds.filter((id) => !resourceIds.includes(id));
-  if (removedResIds.length > 0) {
-    await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
-      method: "DELETE",
-      headers: { "xc-token": token, "Content-Type": "application/json" },
-      body: JSON.stringify(removedResIds.map((id) => ({ Id: id }))),
-    });
-  }
 
   // Sync all relationship links using NocoDB's dedicated link endpoints
   await Promise.all([
