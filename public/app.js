@@ -21,11 +21,10 @@ const STAGES_CONFIG = [
   { id: "stage-1", label: "About You", isFullOnly: false },
   { id: "stage-2", label: "Project Details", isFullOnly: false },
   { id: "stage-3", label: "Organisations", isFullOnly: true },
-  { id: "stage-4", label: "Focus", isFullOnly: true },
-  { id: "stage-5", label: "Participants", isFullOnly: true },
-  { id: "stage-6", label: "Findings", isFullOnly: true },
-  { id: "stage-7", label: "Resources", isFullOnly: true },
-  { id: "stage-8", label: "Review & Submit", isFullOnly: false },
+  { id: "stage-4", label: "Participants", isFullOnly: true },
+  { id: "stage-5", label: "Findings", isFullOnly: true },
+  { id: "stage-6", label: "Resources", isFullOnly: true },
+  { id: "stage-7", label: "Review & Submit", isFullOnly: false },
 ];
 
 function getActiveStages() {
@@ -53,27 +52,21 @@ function isStageComplete(stageId) {
       );
     }
     case "stage-4": {
-      const aiForms = getCheckedValues("aiForms");
-      const subject = (document.getElementById("subjectMatter")?.value || "").trim();
-      const goals = getCheckedValues("projectGoals");
-      return aiForms.length > 0 || subject.length > 0 || goals.length > 0;
-    }
-    case "stage-5": {
       const inclusion = (document.getElementById("inclusionEfforts")?.value || "").trim();
       const limitations = (document.getElementById("limitations")?.value || "").trim();
       return state.participants.length > 0 || inclusion.length > 0 || limitations.length > 0;
     }
-    case "stage-6": {
+    case "stage-5": {
       const findings = (document.getElementById("headlineFindings")?.value || "").trim();
       const aiAssistance = getCheckedValues("aiAssistance");
       return findings.length > 0 || aiAssistance.length > 0;
     }
-    case "stage-7": {
+    case "stage-6": {
       const published = getCheckedValues("publishedResources");
       const photos = getCheckedValues("photosAvailable");
       return published.length > 0 || state.resources.length > 0 || photos.length > 0;
     }
-    case "stage-8": {
+    case "stage-7": {
       return Boolean(document.getElementById("consentCheck")?.checked);
     }
     default:
@@ -187,14 +180,14 @@ function goToStage(targetStageId) {
 
   const stage2NextBtn = document.getElementById("stage2NextBtn");
   if (stage2NextBtn) {
-    stage2NextBtn.dataset.target = isFull ? "stage-3" : "stage-8";
+    stage2NextBtn.dataset.target = isFull ? "stage-3" : "stage-7";
     stage2NextBtn.innerHTML = isFull ? "Next: Organisations &rarr;" : "Next: Consent &amp; Submit &rarr;";
   }
 
-  const stage8PrevBtn = document.getElementById("stage8PrevBtn");
-  if (stage8PrevBtn) {
-    stage8PrevBtn.dataset.target = isFull ? "stage-7" : "stage-2";
-    stage8PrevBtn.innerHTML = isFull ? "&larr; Back: Supporting Resources" : "&larr; Back: Project Details";
+  const stage7PrevBtn = document.getElementById("stage7PrevBtn");
+  if (stage7PrevBtn) {
+    stage7PrevBtn.dataset.target = isFull ? "stage-6" : "stage-2";
+    stage7PrevBtn.innerHTML = isFull ? "&larr; Back: Supporting Resources" : "&larr; Back: Project Details";
   }
 
   updateStageProgress();
@@ -861,7 +854,7 @@ function initFormSubmission() {
     }
 
     if (!document.getElementById("consentCheck").checked) {
-      goToStage("stage-8");
+      goToStage("stage-7");
       alert("Please agree to the consent statement before submitting.");
       document.getElementById("consentCheck")?.focus();
       return;
