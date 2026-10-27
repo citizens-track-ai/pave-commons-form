@@ -288,20 +288,57 @@ function initParticipantManager() {
   const listEl = document.getElementById("participantsList");
   const addBtn = document.getElementById("addParticipantBtn");
   const modal = document.getElementById("participantModal");
+  const modalTitle = document.getElementById("participantModalTitle");
   const saveBtn = document.getElementById("saveParticipantBtn");
   const cancelBtn = document.getElementById("cancelParticipantBtn");
   const dialogForm = document.getElementById("participantDialogForm");
+
+  let editingParticipantIndex = null;
 
   addBtn.addEventListener("click", () => {
     if (state.participants.length >= 15) {
       alert("Maximum of 15 participant groups reached.");
       return;
     }
+    editingParticipantIndex = null;
     dialogForm.reset();
+    setCheckedValues("p_location", []);
+    setCheckedValues("p_methods", []);
+    setCheckedValues("p_learning", []);
+    if (modalTitle) modalTitle.textContent = "Add Participant Group";
+    saveBtn.textContent = "Add Group";
     modal.showModal();
   });
 
-  cancelBtn.addEventListener("click", () => modal.close());
+  cancelBtn.addEventListener("click", () => {
+    editingParticipantIndex = null;
+    modal.close();
+  });
+
+  window.openEditParticipant = function (idx) {
+    const p = state.participants[idx];
+    if (!p) return;
+    editingParticipantIndex = idx;
+    dialogForm.reset();
+
+    if (modalTitle) modalTitle.textContent = "Edit Participant Group";
+    saveBtn.textContent = "Save Changes";
+
+    document.getElementById("p_groupDescription").value = p.groupDescription || "";
+    document.getElementById("p_participantCount").value = p.participantCount != null ? p.participantCount : "";
+    document.getElementById("p_engagementHours").value = p.engagementHours != null ? p.engagementHours : "";
+    
+    setCheckedValues("p_location", p.engagementLocations);
+    document.getElementById("p_recruitmentMethod").value = p.recruitmentMethod || "";
+    document.getElementById("p_recruitmentDescription").value = p.recruitmentDescription || "";
+    document.getElementById("p_targetPopulation").value = p.targetPopulation || "";
+    document.getElementById("p_geographicOrigin").value = p.geographicOrigin || "";
+    setCheckedValues("p_methods", p.engagementMethods);
+    setCheckedValues("p_learning", p.learningFacilitationOptions);
+    document.getElementById("p_notes").value = p.notes || "";
+
+    modal.showModal();
+  };
 
   saveBtn.addEventListener("click", () => {
     const desc = document.getElementById("p_groupDescription").value.trim();
@@ -321,7 +358,7 @@ function initParticipantManager() {
     const learning = getCheckedValues("p_learning");
     const notes = document.getElementById("p_notes").value.trim();
 
-    state.participants.push({
+    const participantData = {
       groupDescription: desc,
       participantCount: count ? Math.abs(parseInt(count, 10)) : null,
       engagementHours: hours ? Math.abs(parseFloat(hours)) : null,
@@ -333,7 +370,18 @@ function initParticipantManager() {
       engagementMethods: methods,
       learningFacilitationOptions: learning,
       notes: notes,
-    });
+    };
+
+    if (editingParticipantIndex !== null && editingParticipantIndex >= 0) {
+      const existing = state.participants[editingParticipantIndex];
+      if (existing && existing.id) {
+        participantData.id = existing.id;
+      }
+      state.participants[editingParticipantIndex] = participantData;
+      editingParticipantIndex = null;
+    } else {
+      state.participants.push(participantData);
+    }
 
     renderParticipantsList(listEl);
     modal.close();
@@ -350,15 +398,24 @@ function renderParticipantsList(listEl) {
 
   state.participants.forEach((p, idx) => {
     const card = document.createElement("div");
-    card.className = "repeater-card";
+    card.className = "repeater-card clickable-card";
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("title", "Click to edit this participant group");
+
     const methods = Array.isArray(p.engagementMethods)
       ? p.engagementMethods
       : (typeof p.engagementMethods === "string" ? p.engagementMethods.split(",").map((s) => s.trim()).filter(Boolean) : []);
 
     card.innerHTML = `
       <div class="card-header">
-        <strong>${idx + 1}. ${escapeHtml(p.groupDescription)}</strong>
-        <button type="button" class="btn-remove" aria-label="Remove group">&times; Remove</button>
+        <div class="card-title-group">
+          <strong>${idx + 1}. ${escapeHtml(p.groupDescription)}</strong>
+          <span class="badge-edit">Click to edit</span>
+        </div>
+        <div class="card-actions">
+          <button type="button" class="btn-remove" aria-label="Remove group">&times; Remove</button>
+        </div>
       </div>
       <div class="card-details">
         ${p.participantCount ? `<span><strong>Count:</strong> ${escapeHtml(p.participantCount)}</span> ` : ""}
@@ -367,10 +424,29 @@ function renderParticipantsList(listEl) {
         ${methods.length > 0 ? `<div><small>Methods: ${methods.map(escapeHtml).join(", ")}</small></div>` : ""}
       </div>
     `;
-    card.querySelector(".btn-remove").addEventListener("click", () => {
+
+    card.addEventListener("click", () => {
+      if (window.openEditParticipant) {
+        window.openEditParticipant(idx);
+      }
+    });
+
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (window.openEditParticipant) {
+          window.openEditParticipant(idx);
+        }
+      }
+    });
+
+    const removeBtn = card.querySelector(".btn-remove");
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       state.participants.splice(idx, 1);
       renderParticipantsList(listEl);
     });
+
     listEl.appendChild(card);
   });
 }
@@ -382,20 +458,47 @@ function initResourceManager() {
   const listEl = document.getElementById("resourcesList");
   const addBtn = document.getElementById("addResourceBtn");
   const modal = document.getElementById("resourceModal");
+  const modalTitle = document.getElementById("resourceModalTitle");
   const saveBtn = document.getElementById("saveResourceBtn");
   const cancelBtn = document.getElementById("cancelResourceBtn");
   const dialogForm = document.getElementById("resourceDialogForm");
+
+  let editingResourceIndex = null;
 
   addBtn.addEventListener("click", () => {
     if (state.resources.length >= 20) {
       alert("Maximum of 20 resources reached.");
       return;
     }
+    editingResourceIndex = null;
     dialogForm.reset();
+    if (modalTitle) modalTitle.textContent = "Add Resource Link";
+    saveBtn.textContent = "Add Resource";
     modal.showModal();
   });
 
-  cancelBtn.addEventListener("click", () => modal.close());
+  cancelBtn.addEventListener("click", () => {
+    editingResourceIndex = null;
+    modal.close();
+  });
+
+  window.openEditResource = function (idx) {
+    const r = state.resources[idx];
+    if (!r) return;
+    editingResourceIndex = idx;
+    dialogForm.reset();
+
+    if (modalTitle) modalTitle.textContent = "Edit Resource Link";
+    saveBtn.textContent = "Save Changes";
+
+    document.getElementById("r_title").value = r.title || "";
+    document.getElementById("r_url").value = r.url || "";
+    document.getElementById("r_type").value = r.resourceType || "Other";
+    document.getElementById("r_desc").value = r.description || "";
+    document.getElementById("r_license").value = r.license || "";
+
+    modal.showModal();
+  };
 
   saveBtn.addEventListener("click", () => {
     const title = document.getElementById("r_title").value.trim();
@@ -410,13 +513,24 @@ function initResourceManager() {
       return;
     }
 
-    state.resources.push({
+    const resData = {
       title,
       url,
       resourceType: document.getElementById("r_type").value,
       description: document.getElementById("r_desc").value.trim(),
       license: document.getElementById("r_license").value.trim(),
-    });
+    };
+
+    if (editingResourceIndex !== null && editingResourceIndex >= 0) {
+      const existing = state.resources[editingResourceIndex];
+      if (existing && existing.id) {
+        resData.id = existing.id;
+      }
+      state.resources[editingResourceIndex] = resData;
+      editingResourceIndex = null;
+    } else {
+      state.resources.push(resData);
+    }
 
     renderResourcesList(listEl);
     modal.close();
@@ -433,18 +547,48 @@ function renderResourcesList(listEl) {
 
   state.resources.forEach((r, idx) => {
     const card = document.createElement("div");
-    card.className = "repeater-card";
+    card.className = "repeater-card clickable-card";
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("title", "Click to edit this resource");
+
     card.innerHTML = `
       <div class="card-header">
-        <strong>${idx + 1}. <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(r.title)}</a></strong>
-        <button type="button" class="btn-remove">&times; Remove</button>
+        <div class="card-title-group">
+          <strong>${idx + 1}. <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener noreferrer" class="resource-link">${escapeHtml(r.title)}</a></strong>
+          <span class="badge-edit">Click to edit</span>
+        </div>
+        <div class="card-actions">
+          <button type="button" class="btn-remove" aria-label="Remove resource">&times; Remove</button>
+        </div>
       </div>
       <div><small>${escapeHtml(r.resourceType)}${r.description ? ` - ${escapeHtml(r.description)}` : ""}</small></div>
     `;
-    card.querySelector(".btn-remove").addEventListener("click", () => {
+
+    card.addEventListener("click", (e) => {
+      if (e.target.closest("a")) return;
+      if (window.openEditResource) {
+        window.openEditResource(idx);
+      }
+    });
+
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.target.closest("a")) return;
+        e.preventDefault();
+        if (window.openEditResource) {
+          window.openEditResource(idx);
+        }
+      }
+    });
+
+    const removeBtn = card.querySelector(".btn-remove");
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       state.resources.splice(idx, 1);
       renderResourcesList(listEl);
     });
+
     listEl.appendChild(card);
   });
 }
@@ -575,10 +719,9 @@ function getCheckedValues(name) {
 }
 
 function setCheckedValues(name, values) {
-  if (!values) return;
   const arr = Array.isArray(values)
     ? values
-    : (typeof values === "string" ? values.split(",").map((s) => s.trim()).filter(Boolean) : [values]);
+    : (typeof values === "string" ? values.split(",").map((s) => s.trim()).filter(Boolean) : (values ? [values] : []));
   const checkboxes = document.querySelectorAll(`input[name="${name}"]`);
   checkboxes.forEach((cb) => {
     cb.checked = arr.includes(cb.value);
