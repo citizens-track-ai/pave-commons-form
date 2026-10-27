@@ -1,0 +1,13 @@
+{
+  "name": "pave-casebook-form",
+  "version": "1.0.0",
+  "description": "PAVE Case Book Submission Form integrated with NocoDB",
+  "main": "src/worker.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.80.0"
+  }
+}

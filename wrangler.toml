@@ -1,0 +1,14 @@
+name = "pave-casebook-form"
+main = "src/worker.js"
+compatibility_date = "2024-10-01"
+
+# Serves static assets from public/ (HTML, JS, CSS)
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+NOCODB_BASE_URL = "https://app.nocodb.com"
+
+# Sensitive variables should be set using:
+# npx wrangler secret put NOCODB_API_TOKEN
