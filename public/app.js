@@ -873,45 +873,48 @@ function initFormSubmission() {
     statusEl.textContent = state.isEditMode ? "Updating case record in NocoDB..." : "Sending your case submission to NocoDB...";
     statusEl.classList.remove("hidden");
 
-    const payload = {
-      caseId: state.caseId,
-      editKey: state.editKey,
-
-      // Submitter
-      submitterName: document.getElementById("submitterName").value.trim(),
-      submitterEmail: email,
-      submitterRoles: getCheckedValues("submitterRoles"),
-      submissionIntent: state.submissionIntent,
-      additionalAcknowledgements: document.getElementById("additionalAcknowledgements").value.trim(),
-
-      // Project Details
-      projectTitle: document.getElementById("projectTitle").value.trim(),
-      projectUrl: projectUrl,
-      projectDescription: document.getElementById("projectDescription").value.trim(),
-      importanceReason: document.getElementById("importanceReason").value.trim(),
-      initiatedMethods: getCheckedValues("initiatedMethods"),
-      startYear: document.getElementById("startYear").value || null,
-      projectStatus: document.getElementById("projectStatus").value || null,
-      endYear: document.getElementById("endYear").value || null,
-
-      // Full Case Fields
-      leadOrganisations: state.leadOrganisations,
-      fundingOrganisations: state.fundingOrganisations,
-      involvedOrganisations: state.involvedOrganisations,
-      aiForms: getCheckedValues("aiForms"),
-      subjectMatter: document.getElementById("subjectMatter").value.trim(),
-      projectGoals: getCheckedValues("projectGoals"),
-      participants: state.participants,
-      inclusionEfforts: document.getElementById("inclusionEfforts").value.trim(),
-      limitations: document.getElementById("limitations").value.trim(),
-      headlineFindings: document.getElementById("headlineFindings").value.trim(),
-      aiAssistance: getCheckedValues("aiAssistance"),
-      publishedResources: getCheckedValues("publishedResources"),
-      resources: state.resources,
-      photosAvailable: getCheckedValues("photosAvailable"),
-    };
-
     try {
+      const email = (document.getElementById("submitterEmail")?.value || "").trim();
+      const projectUrl = (document.getElementById("projectUrl")?.value || "").trim();
+
+      const payload = {
+        caseId: state.caseId,
+        editKey: state.editKey,
+
+        // Submitter
+        submitterName: (document.getElementById("submitterName")?.value || "").trim(),
+        submitterEmail: email,
+        submitterRoles: getCheckedValues("submitterRoles"),
+        submissionIntent: state.submissionIntent,
+        additionalAcknowledgements: (document.getElementById("additionalAcknowledgements")?.value || "").trim(),
+
+        // Project Details
+        projectTitle: (document.getElementById("projectTitle")?.value || "").trim(),
+        projectUrl: projectUrl,
+        projectDescription: (document.getElementById("projectDescription")?.value || "").trim(),
+        importanceReason: (document.getElementById("importanceReason")?.value || "").trim(),
+        initiatedMethods: getCheckedValues("initiatedMethods"),
+        startYear: document.getElementById("startYear")?.value || null,
+        projectStatus: document.getElementById("projectStatus")?.value || null,
+        endYear: document.getElementById("endYear")?.value || null,
+
+        // Full Case Fields
+        leadOrganisations: state.leadOrganisations,
+        fundingOrganisations: state.fundingOrganisations,
+        involvedOrganisations: state.involvedOrganisations,
+        aiForms: getCheckedValues("aiForms"),
+        subjectMatter: (document.getElementById("subjectMatter")?.value || "").trim(),
+        projectGoals: getCheckedValues("projectGoals"),
+        participants: state.participants,
+        inclusionEfforts: (document.getElementById("inclusionEfforts")?.value || "").trim(),
+        limitations: (document.getElementById("limitations")?.value || "").trim(),
+        headlineFindings: (document.getElementById("headlineFindings")?.value || "").trim(),
+        aiAssistance: getCheckedValues("aiAssistance"),
+        publishedResources: getCheckedValues("publishedResources"),
+        resources: state.resources,
+        photosAvailable: getCheckedValues("photosAvailable"),
+      };
+
       const res = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -941,6 +944,8 @@ function initFormSubmission() {
         renderParticipantsList(document.getElementById("participantsList"));
         renderResourcesList(document.getElementById("resourcesList"));
         document.querySelectorAll(".selected-tags").forEach((el) => (el.innerHTML = ""));
+        renderStageTabs();
+        goToStage("stage-1");
       }
 
       window.scrollTo({ top: 0, behavior: "smooth" });
