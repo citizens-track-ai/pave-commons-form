@@ -287,12 +287,40 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
     }
   }
 
+  // Fetch linked organisation names from Organisations table
+  const allOrgIds = [
+    ...(caseRecord["Lead organisations"] || []),
+    ...(caseRecord["Funding Organisations"] || []),
+    ...(caseRecord["Involved organisations"] || []),
+  ]
+    .map((o) => (typeof o === "object" ? (o.Id || o.id || (o.id_fields && o.id_fields.Id)) : o))
+    .filter(Boolean);
+
+  const orgMap = new Map();
+  if (allOrgIds.length > 0) {
+    const uniqueOrgIds = [...new Set(allOrgIds)];
+    const orgWhere = encodeURIComponent(`(Id,in,${uniqueOrgIds.join(",")})`);
+    const orgRes = await fetch(
+      `${baseUrl}/api/v2/tables/${TABLES.ORGANISATIONS}/records?where=${orgWhere}&limit=100`,
+      { headers: { "xc-token": token } }
+    );
+    if (orgRes.ok) {
+      const orgData = await orgRes.json();
+      (orgData.list || []).forEach((org) => {
+        const id = org.Id || org.id;
+        const name = org.Name || org["cqkqjxbtc9sjzuk"] || `Organisation #${id}`;
+        orgMap.set(Number(id), name);
+      });
+    }
+  }
+
   // Format organisation lists
   const formatOrgLink = (arr) =>
-    (arr || []).map((o) => ({
-      id: o.Id || o.id,
-      name: o.Name || o["cqkqjxbtc9sjzuk"] || "Organisation #" + (o.Id || o.id),
-    }));
+    (arr || []).map((o) => {
+      const id = Number(typeof o === "object" ? (o.Id || o.id || (o.id_fields && o.id_fields.Id)) : o);
+      const name = orgMap.get(id) || (o && typeof o === "object" && (o.Name || o.fields?.Name)) || `Organisation #${id}`;
+      return { id, name };
+    });
 
   return jsonResponse(
     {
@@ -479,10 +507,10 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     caseData["EditKey"] = generateSecureKey(16);
   }
 
-  // Assign organisation links directly in case payload
-  caseData["Lead organisations"] = leadOrgIds.map((id) => ({ Id: id }));
-  caseData["Funding Organisations"] = fundingOrgIds.map((id) => ({ Id: id }));
-  caseData["Involved organisations"] = involvedOrgIds.map((id) => ({ Id: id }));
+  // Assign organisation links directly in case payload using bare primary keys [1, 2]
+  caseData["Lead organisations"] = leadOrgIds;
+  caseData["Funding Organisations"] = fundingOrgIds;
+  caseData["Involved organisations"] = involvedOrgIds;
 
   let finalCaseId;
 
@@ -612,27 +640,26 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     }
   }
 
-  // Link participants and resources directly on the Case record in NocoDB v2
-  const caseLinksUpdate = { Id: finalCaseId };
-  if (participantIds.length > 0 || isEditMode) {
-    caseLinksUpdate["Participants"] = participantIds.map((id) => ({ Id: id }));
-  }
-  if (resourceIds.length > 0 || isEditMode) {
-    caseLinksUpdate["Supporting resources"] = resourceIds.map((id) => ({ Id: id }));
-  }
+  // Link all relation fields directly on the Case record in NocoDB v2 using bare primary keys
+  const caseLinksUpdate = {
+    Id: finalCaseId,
+    "Lead organisations": leadOrgIds,
+    "Funding Organisations": fundingOrgIds,
+    "Involved organisations": involvedOrgIds,
+    "Participants": participantIds,
+    "Supporting resources": resourceIds,
+  };
 
-  if (Object.keys(caseLinksUpdate).length > 1) {
-    const patchLinksRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
-      method: "PATCH",
-      headers: {
-        "xc-token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify([caseLinksUpdate]),
-    });
-    if (!patchLinksRes.ok) {
-      console.warn("Failed to patch Case child links:", patchLinksRes.status, await patchLinksRes.text());
-    }
+  const patchLinksRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+    method: "PATCH",
+    headers: {
+      "xc-token": token,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([caseLinksUpdate]),
+  });
+  if (!patchLinksRes.ok) {
+    console.warn("Failed to patch Case child links:", patchLinksRes.status, await patchLinksRes.text());
   }
 
   return jsonResponse(
