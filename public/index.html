@@ -42,250 +42,312 @@
         </div>
       </fieldset>
 
-      <!-- Section 1: Submitter Info -->
-      <fieldset>
-        <legend>1. About You</legend>
-        
-        <div class="form-group">
-          <label for="submitterName">Your Name</label>
-          <input type="text" id="submitterName" name="submitterName" placeholder="Full name">
+      <!-- Stage Tabs & Progress Bar -->
+      <div class="stage-nav-container">
+        <div class="stage-progress-header">
+          <span class="stage-progress-label" id="stageProgressLabel">Stage 1 of 8</span>
+          <span class="stage-progress-percent" id="stageProgressPercent">0% Completed</span>
         </div>
-
-        <div class="form-group">
-          <label for="submitterEmail">Your Contact E-mail *</label>
-          <input type="email" id="submitterEmail" name="submitterEmail" required placeholder="name@example.com">
+        <div class="stage-progress-track">
+          <div class="stage-progress-fill" id="stageProgressFill"></div>
         </div>
-
-        <div class="form-group">
-          <label>Your Role in the Project</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" name="submitterRoles" value="Project leader"> Project leader</label>
-            <label><input type="checkbox" name="submitterRoles" value="Project team"> Project team</label>
-            <label><input type="checkbox" name="submitterRoles" value="Commissioner"> Commissioner</label>
-            <label><input type="checkbox" name="submitterRoles" value="Participant"> Participant</label>
-            <label><input type="checkbox" name="submitterRoles" value="Observer"> Observer</label>
-            <label><input type="checkbox" name="submitterRoles" value="Other"> Other</label>
-            <label><input type="checkbox" name="submitterRoles" value="Not involved"> Not involved</label>
+        <nav class="form-tabs-nav" aria-label="Form stages">
+          <div class="form-tabs-list" id="formTabsList" role="tablist">
+            <!-- Tabs injected dynamically by app.js -->
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="additionalAcknowledgements">Additional Acknowledgements</label>
-          <input type="text" id="additionalAcknowledgements" name="additionalAcknowledgements" placeholder="Any co-authors, contributors or credits">
-        </div>
-      </fieldset>
-
-      <!-- Section 2: Project Details -->
-      <fieldset>
-        <legend>2. Project Details</legend>
-
-        <div class="form-group">
-          <label for="projectTitle">Project Title *</label>
-          <input type="text" id="projectTitle" name="projectTitle" required placeholder="Name of the public engagement initiative">
-        </div>
-
-        <div class="form-group">
-          <label for="projectUrl">Project URL *</label>
-          <input type="url" id="projectUrl" name="projectUrl" required placeholder="https://example.org/project">
-          <small>Please provide a URL where project reports and resources can be found.</small>
-        </div>
-
-        <div class="form-group">
-          <label for="projectDescription">Brief Description of the Project *</label>
-          <textarea id="projectDescription" name="projectDescription" rows="4" required placeholder="Summary of the engagement process and objectives..."></textarea>
-        </div>
-
-        <div class="form-group">
-          <label for="importanceReason">Why is this project important to include in the case book?</label>
-          <textarea id="importanceReason" name="importanceReason" rows="3" placeholder="Key significance, unique approach, or novel insights..."></textarea>
-        </div>
-
-        <div class="form-group">
-          <label>How was the project initiated?</label>
-          <div class="checkbox-group">
-            <label><input type="checkbox" name="initiatedMethods" value="Commissioned"> Commissioned</label>
-            <label><input type="checkbox" name="initiatedMethods" value="Academic research"> Academic research</label>
-            <label><input type="checkbox" name="initiatedMethods" value="Community Led"> Community Led</label>
-            <label><input type="checkbox" name="initiatedMethods" value="Co-created"> Co-created</label>
-            <label><input type="checkbox" name="initiatedMethods" value="Other"> Other</label>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-group col">
-            <label for="startYear">Start Year</label>
-            <input type="number" id="startYear" name="startYear" min="1990" max="2035" placeholder="e.g. 2024">
-          </div>
-          <div class="form-group col">
-            <label for="projectStatus">Project Status</label>
-            <select id="projectStatus" name="projectStatus">
-              <option value="">-- Select Status --</option>
-              <option value="Planned">Planned</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Complete">Complete</option>
-            </select>
-          </div>
-          <div class="form-group col">
-            <label for="endYear">Conclusion Year</label>
-            <input type="number" id="endYear" name="endYear" min="1990" max="2035" placeholder="e.g. 2025">
-          </div>
-        </div>
-      </fieldset>
-
-      <!-- FULL CASE ENTRY FIELDS (Shown conditionally) -->
-      <div id="fullCaseSection" class="hidden">
-        
-        <!-- Section 3: Project Team & Organisations -->
-        <fieldset>
-          <legend>3. Who Was Asking? (Project Team &amp; Organisations)</legend>
-          <p class="section-desc">Search existing organisations in our database, or add a new organisation if it is not found.</p>
-
-          <div class="form-group">
-            <label>Lead Organisations</label>
-            <div id="leadOrgsPicker" class="org-picker" data-category="lead"></div>
-          </div>
-
-          <div class="form-group">
-            <label>Funding Organisations</label>
-            <div id="fundingOrgsPicker" class="org-picker" data-category="funding"></div>
-          </div>
-
-          <div class="form-group">
-            <label>Other Organisations Involved</label>
-            <div id="involvedOrgsPicker" class="org-picker" data-category="involved"></div>
-          </div>
-        </fieldset>
-
-        <!-- Section 4: Focus of Engagement -->
-        <fieldset>
-          <legend>4. What Was Asked About?</legend>
-
-          <div class="form-group">
-            <label>What form of AI is the project about?</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" name="aiForms" value="Generative AI"> Generative AI</label>
-              <label><input type="checkbox" name="aiForms" value="Predictive AI"> Predictive AI</label>
-              <label><input type="checkbox" name="aiForms" value="Specific AI system(s)"> Specific AI system(s)</label>
-              <label><input type="checkbox" name="aiForms" value="AI in general"> AI in general</label>
-              <label><input type="checkbox" name="aiForms" value="Current issues"> Current issues</label>
-              <label><input type="checkbox" name="aiForms" value="Future issues"> Future issues</label>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="subjectMatter">Describe the subject matter in your own words (one line)</label>
-            <input type="text" id="subjectMatter" name="subjectMatter" placeholder="e.g. Public perceptions of facial recognition in schools">
-          </div>
-
-          <div class="form-group">
-            <label>Project Goals</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" name="projectGoals" value="Policy: Inform a policy-making process"> Policy: Inform a policy-making process</label>
-              <label><input type="checkbox" name="projectGoals" value="Quantitative: Generate statistical evidence on public attitudes to AI"> Quantitative: Generate statistical evidence on public attitudes to AI</label>
-              <label><input type="checkbox" name="projectGoals" value="Qualitative: Capture qualitative evidence on public attitudes to AI"> Qualitative: Capture qualitative evidence on public attitudes to AI</label>
-              <label><input type="checkbox" name="projectGoals" value="Empowerment: Build community power with respect to AI"> Empowerment: Build community power with respect to AI</label>
-              <label><input type="checkbox" name="projectGoals" value="Methods: Create re-usable participation tools & methods"> Methods: Create re-usable participation tools &amp; methods</label>
-              <label><input type="checkbox" name="projectGoals" value="Capacity: Build participant capacity to engage with AI"> Capacity: Build participant capacity to engage with AI</label>
-              <label><input type="checkbox" name="projectGoals" value="AI Development: Shape the development of AI tools"> AI Development: Shape the development of AI tools</label>
-              <label><input type="checkbox" name="projectGoals" value="Audit: Review design or implementation of AI tools"> Audit: Review design or implementation of AI tools</label>
-              <label><input type="checkbox" name="projectGoals" value="Evaluate: Check the quality of evidence or engagement processes"> Evaluate: Check the quality of evidence or engagement processes</label>
-            </div>
-          </div>
-        </fieldset>
-
-        <!-- Section 5: Participants (Repeater) -->
-        <fieldset>
-          <legend>5. Who Was Asked and How? (Participants)</legend>
-          <p class="section-desc">
-            Add details for each distinct participant group involved in this project (e.g. combining an online survey with a deliberative workshop).
-          </p>
-
-          <div id="participantsList" class="repeater-list"></div>
-          <button type="button" id="addParticipantBtn" class="btn-secondary">+ Add Participant Group</button>
-
-          <div class="form-group" style="margin-top: 1.5rem;">
-            <label for="inclusionEfforts">Specific Efforts at Inclusion</label>
-            <textarea id="inclusionEfforts" name="inclusionEfforts" rows="3" placeholder="Efforts made to make the recruitment and engagement process accessible and inclusive..."></textarea>
-          </div>
-
-          <div class="form-group">
-            <label for="limitations">Limitations to Note</label>
-            <textarea id="limitations" name="limitations" rows="3" placeholder="Practical constraints, disrupted data collection, or underrepresented groups..."></textarea>
-          </div>
-        </fieldset>
-
-        <!-- Section 6: Headline Findings -->
-        <fieldset>
-          <legend>6. What Was Said?</legend>
-
-          <div class="form-group">
-            <label for="headlineFindings">Headline Findings</label>
-            <textarea id="headlineFindings" name="headlineFindings" rows="4" placeholder="3 - 10 key messages about AI from the project report..."></textarea>
-          </div>
-
-          <div class="form-group">
-            <label>Was AI used to assist in summary generation?</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" name="aiAssistance" value="The summary was written by hand"> The summary was written by hand</label>
-              <label><input type="checkbox" name="aiAssistance" value="AI was used in generating this summary"> AI was used in generating this summary</label>
-              <label><input type="checkbox" name="aiAssistance" value="The summary has been edited and checked for accuracy"> The summary has been edited and checked for accuracy</label>
-            </div>
-          </div>
-        </fieldset>
-
-        <!-- Section 7: Supporting Resources -->
-        <fieldset>
-          <legend>7. Supporting Resources</legend>
-
-          <div class="form-group">
-            <label>Which of the following resources have been published?</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" name="publishedResources" value="A project report"> A project report</label>
-              <label><input type="checkbox" name="publishedResources" value="A project video"> A project video</label>
-              <label><input type="checkbox" name="publishedResources" value="An independent evaluation"> An independent evaluation</label>
-              <label><input type="checkbox" name="publishedResources" value="A research poster"> A research poster</label>
-              <label><input type="checkbox" name="publishedResources" value="A method guide or toolkit"> A method guide or toolkit</label>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label>Resource Links / References</label>
-            <div id="resourcesList" class="repeater-list"></div>
-            <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource Link</button>
-          </div>
-
-          <div class="form-group">
-            <label>Photos Available?</label>
-            <div class="checkbox-group">
-              <label><input type="checkbox" name="photosAvailable" value="I have photos from this project to upload"> I have photos from this project to upload</label>
-              <label><input type="checkbox" name="photosAvailable" value="Photos may be available from this project - contact me later"> Photos may be available from this project - contact me later</label>
-              <label><input type="checkbox" name="photosAvailable" value="There are no photos available from this project"> There are no photos available from this project</label>
-            </div>
-          </div>
-        </fieldset>
+        </nav>
       </div>
 
-      <!-- Section 8: Consent & Submission -->
-      <fieldset>
-        <legend>Consent Statement</legend>
-        <p class="consent-text">
-          By submitting this entry, I confirm that:
-        </p>
-        <ol class="consent-list">
-          <li>The information I've provided may be made public and archived as part of the PAVE case book, published under an open license;</li>
-          <li>I am not including sensitive personal information, such as unpublished transcripts or identifying respondent details;</li>
-          <li>If photos are attached, appropriate consent is in place for publication online.</li>
-        </ol>
-        <div class="form-group">
-          <label>
-            <input type="checkbox" id="consentCheck" required>
-            I agree to the terms and Connected by Data data protection policy. *
-          </label>
-        </div>
-      </fieldset>
+      <div class="stages-container">
+        <!-- Stage 1: About You -->
+        <div class="form-stage" id="stage-1" role="tabpanel" aria-labelledby="tab-1">
+          <fieldset>
+            <legend>1. About You</legend>
+            
+            <div class="form-group">
+              <label for="submitterName">Your Name</label>
+              <input type="text" id="submitterName" name="submitterName" placeholder="Full name">
+            </div>
 
-      <div class="form-actions">
-        <button type="submit" id="submitBtn" class="btn-primary">Submit Case Entry</button>
+            <div class="form-group">
+              <label for="submitterEmail">Your Contact E-mail *</label>
+              <input type="email" id="submitterEmail" name="submitterEmail" required placeholder="name@example.com">
+            </div>
+
+            <div class="form-group">
+              <label>Your Role in the Project</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="submitterRoles" value="Project leader"> Project leader</label>
+                <label><input type="checkbox" name="submitterRoles" value="Project team"> Project team</label>
+                <label><input type="checkbox" name="submitterRoles" value="Commissioner"> Commissioner</label>
+                <label><input type="checkbox" name="submitterRoles" value="Participant"> Participant</label>
+                <label><input type="checkbox" name="submitterRoles" value="Observer"> Observer</label>
+                <label><input type="checkbox" name="submitterRoles" value="Other"> Other</label>
+                <label><input type="checkbox" name="submitterRoles" value="Not involved"> Not involved</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="additionalAcknowledgements">Additional Acknowledgements</label>
+              <input type="text" id="additionalAcknowledgements" name="additionalAcknowledgements" placeholder="Any co-authors, contributors or credits">
+            </div>
+          </fieldset>
+          <div class="stage-actions">
+            <span></span>
+            <button type="button" class="btn-primary btn-next-stage" data-target="stage-2">Next: Project Details &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Stage 2: Project Details -->
+        <div class="form-stage hidden" id="stage-2" role="tabpanel" aria-labelledby="tab-2">
+          <fieldset>
+            <legend>2. Project Details</legend>
+
+            <div class="form-group">
+              <label for="projectTitle">Project Title *</label>
+              <input type="text" id="projectTitle" name="projectTitle" required placeholder="Name of the public engagement initiative">
+            </div>
+
+            <div class="form-group">
+              <label for="projectUrl">Project URL *</label>
+              <input type="url" id="projectUrl" name="projectUrl" required placeholder="https://example.org/project">
+              <small>Please provide a URL where project reports and resources can be found.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="projectDescription">Brief Description of the Project *</label>
+              <textarea id="projectDescription" name="projectDescription" rows="4" required placeholder="Summary of the engagement process and objectives..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label for="importanceReason">Why is this project important to include in the case book?</label>
+              <textarea id="importanceReason" name="importanceReason" rows="3" placeholder="Key significance, unique approach, or novel insights..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label>How was the project initiated?</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="initiatedMethods" value="Commissioned"> Commissioned</label>
+                <label><input type="checkbox" name="initiatedMethods" value="Academic research"> Academic research</label>
+                <label><input type="checkbox" name="initiatedMethods" value="Community Led"> Community Led</label>
+                <label><input type="checkbox" name="initiatedMethods" value="Co-created"> Co-created</label>
+                <label><input type="checkbox" name="initiatedMethods" value="Other"> Other</label>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group col">
+                <label for="startYear">Start Year</label>
+                <input type="number" id="startYear" name="startYear" min="1990" max="2035" placeholder="e.g. 2024">
+              </div>
+              <div class="form-group col">
+                <label for="projectStatus">Project Status</label>
+                <select id="projectStatus" name="projectStatus">
+                  <option value="">-- Select Status --</option>
+                  <option value="Planned">Planned</option>
+                  <option value="In Progress">In Progress</option>
+                  <option value="Complete">Complete</option>
+                </select>
+              </div>
+              <div class="form-group col">
+                <label for="endYear">Conclusion Year</label>
+                <input type="number" id="endYear" name="endYear" min="1990" max="2035" placeholder="e.g. 2025">
+              </div>
+            </div>
+          </fieldset>
+          <div class="stage-actions">
+            <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-1">&larr; Back: About You</button>
+            <button type="button" class="btn-primary btn-next-stage" id="stage2NextBtn" data-target="stage-3">Next &rarr;</button>
+          </div>
+        </div>
+
+        <!-- Full Case Only Stages -->
+        <div id="fullCaseStages">
+          <!-- Stage 3: Project Team & Organisations -->
+          <div class="form-stage hidden" id="stage-3" role="tabpanel" aria-labelledby="tab-3">
+            <fieldset>
+              <legend>3. Who Was Asking? (Project Team &amp; Organisations)</legend>
+              <p class="section-desc">Search existing organisations in our database, or add a new organisation if it is not found.</p>
+
+              <div class="form-group">
+                <label>Lead Organisations</label>
+                <div id="leadOrgsPicker" class="org-picker" data-category="lead"></div>
+              </div>
+
+              <div class="form-group">
+                <label>Funding Organisations</label>
+                <div id="fundingOrgsPicker" class="org-picker" data-category="funding"></div>
+              </div>
+
+              <div class="form-group">
+                <label>Other Organisations Involved</label>
+                <div id="involvedOrgsPicker" class="org-picker" data-category="involved"></div>
+              </div>
+            </fieldset>
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-2">&larr; Back: Project Details</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-4">Next: Focus of Engagement &rarr;</button>
+            </div>
+          </div>
+
+          <!-- Stage 4: Focus of Engagement -->
+          <div class="form-stage hidden" id="stage-4" role="tabpanel" aria-labelledby="tab-4">
+            <fieldset>
+              <legend>4. What Was Asked About?</legend>
+
+              <div class="form-group">
+                <label>What form of AI is the project about?</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="aiForms" value="Generative AI"> Generative AI</label>
+                  <label><input type="checkbox" name="aiForms" value="Predictive AI"> Predictive AI</label>
+                  <label><input type="checkbox" name="aiForms" value="Specific AI system(s)"> Specific AI system(s)</label>
+                  <label><input type="checkbox" name="aiForms" value="AI in general"> AI in general</label>
+                  <label><input type="checkbox" name="aiForms" value="Current issues"> Current issues</label>
+                  <label><input type="checkbox" name="aiForms" value="Future issues"> Future issues</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="subjectMatter">Describe the subject matter in your own words (one line)</label>
+                <input type="text" id="subjectMatter" name="subjectMatter" placeholder="e.g. Public perceptions of facial recognition in schools">
+              </div>
+
+              <div class="form-group">
+                <label>Project Goals</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="projectGoals" value="Policy: Inform a policy-making process"> Policy: Inform a policy-making process</label>
+                  <label><input type="checkbox" name="projectGoals" value="Quantitative: Generate statistical evidence on public attitudes to AI"> Quantitative: Generate statistical evidence on public attitudes to AI</label>
+                  <label><input type="checkbox" name="projectGoals" value="Qualitative: Capture qualitative evidence on public attitudes to AI"> Qualitative: Capture qualitative evidence on public attitudes to AI</label>
+                  <label><input type="checkbox" name="projectGoals" value="Empowerment: Build community power with respect to AI"> Empowerment: Build community power with respect to AI</label>
+                  <label><input type="checkbox" name="projectGoals" value="Methods: Create re-usable participation tools & methods"> Methods: Create re-usable participation tools &amp; methods</label>
+                  <label><input type="checkbox" name="projectGoals" value="Capacity: Build participant capacity to engage with AI"> Capacity: Build participant capacity to engage with AI</label>
+                  <label><input type="checkbox" name="projectGoals" value="AI Development: Shape the development of AI tools"> AI Development: Shape the development of AI tools</label>
+                  <label><input type="checkbox" name="projectGoals" value="Audit: Review design or implementation of AI tools"> Audit: Review design or implementation of AI tools</label>
+                  <label><input type="checkbox" name="projectGoals" value="Evaluate: Check the quality of evidence or engagement processes"> Evaluate: Check the quality of evidence or engagement processes</label>
+                </div>
+              </div>
+            </fieldset>
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-3">&larr; Back: Organisations</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-5">Next: Participants &rarr;</button>
+            </div>
+          </div>
+
+          <!-- Stage 5: Participants (Repeater) -->
+          <div class="form-stage hidden" id="stage-5" role="tabpanel" aria-labelledby="tab-5">
+            <fieldset>
+              <legend>5. Who Was Asked and How? (Participants)</legend>
+              <p class="section-desc">
+                Add details for each distinct participant group involved in this project (e.g. combining an online survey with a deliberative workshop).
+              </p>
+
+              <div id="participantsList" class="repeater-list"></div>
+              <button type="button" id="addParticipantBtn" class="btn-secondary">+ Add Participant Group</button>
+
+              <div class="form-group" style="margin-top: 1.5rem;">
+                <label for="inclusionEfforts">Specific Efforts at Inclusion</label>
+                <textarea id="inclusionEfforts" name="inclusionEfforts" rows="3" placeholder="Efforts made to make the recruitment and engagement process accessible and inclusive..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label for="limitations">Limitations to Note</label>
+                <textarea id="limitations" name="limitations" rows="3" placeholder="Practical constraints, disrupted data collection, or underrepresented groups..."></textarea>
+              </div>
+            </fieldset>
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-4">&larr; Back: Focus</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-6">Next: Headline Findings &rarr;</button>
+            </div>
+          </div>
+
+          <!-- Stage 6: Headline Findings -->
+          <div class="form-stage hidden" id="stage-6" role="tabpanel" aria-labelledby="tab-6">
+            <fieldset>
+              <legend>6. What Was Said?</legend>
+
+              <div class="form-group">
+                <label for="headlineFindings">Headline Findings</label>
+                <textarea id="headlineFindings" name="headlineFindings" rows="4" placeholder="3 - 10 key messages about AI from the project report..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Was AI used to assist in summary generation?</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="aiAssistance" value="The summary was written by hand"> The summary was written by hand</label>
+                  <label><input type="checkbox" name="aiAssistance" value="AI was used in generating this summary"> AI was used in generating this summary</label>
+                  <label><input type="checkbox" name="aiAssistance" value="The summary has been edited and checked for accuracy"> The summary has been edited and checked for accuracy</label>
+                </div>
+              </div>
+            </fieldset>
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back: Participants</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-7">Next: Supporting Resources &rarr;</button>
+            </div>
+          </div>
+
+          <!-- Stage 7: Supporting Resources -->
+          <div class="form-stage hidden" id="stage-7" role="tabpanel" aria-labelledby="tab-7">
+            <fieldset>
+              <legend>7. Supporting Resources</legend>
+
+              <div class="form-group">
+                <label>Which of the following resources have been published?</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="publishedResources" value="A project report"> A project report</label>
+                  <label><input type="checkbox" name="publishedResources" value="A project video"> A project video</label>
+                  <label><input type="checkbox" name="publishedResources" value="An independent evaluation"> An independent evaluation</label>
+                  <label><input type="checkbox" name="publishedResources" value="A research poster"> A research poster</label>
+                  <label><input type="checkbox" name="publishedResources" value="A method guide or toolkit"> A method guide or toolkit</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Resource Links / References</label>
+                <div id="resourcesList" class="repeater-list"></div>
+                <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource Link</button>
+              </div>
+
+              <div class="form-group">
+                <label>Photos Available?</label>
+                <div class="checkbox-group">
+                  <label><input type="checkbox" name="photosAvailable" value="I have photos from this project to upload"> I have photos from this project to upload</label>
+                  <label><input type="checkbox" name="photosAvailable" value="Photos may be available from this project - contact me later"> Photos may be available from this project - contact me later</label>
+                  <label><input type="checkbox" name="photosAvailable" value="There are no photos available from this project"> There are no photos available from this project</label>
+                </div>
+              </div>
+            </fieldset>
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-6">&larr; Back: Headline Findings</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-8">Next: Review &amp; Submit &rarr;</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stage 8: Consent & Submission -->
+        <div class="form-stage hidden" id="stage-8" role="tabpanel" aria-labelledby="tab-8">
+          <fieldset>
+            <legend>Consent Statement</legend>
+            <p class="consent-text">
+              By submitting this entry, I confirm that:
+            </p>
+            <ol class="consent-list">
+              <li>The information I've provided may be made public and archived as part of the PAVE case book, published under an open license;</li>
+              <li>I am not including sensitive personal information, such as unpublished transcripts or identifying respondent details;</li>
+              <li>If photos are attached, appropriate consent is in place for publication online.</li>
+            </ol>
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="consentCheck" required>
+                I agree to the terms and Connected by Data data protection policy. *
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="stage-actions">
+            <button type="button" class="btn-secondary btn-prev-stage" id="stage8PrevBtn" data-target="stage-7">&larr; Back</button>
+            <button type="submit" id="submitBtn" class="btn-primary">Submit Case Entry</button>
+          </div>
+        </div>
       </div>
 
       <div id="statusMessage" class="status-msg hidden"></div>

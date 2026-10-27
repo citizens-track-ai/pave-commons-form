@@ -464,3 +464,157 @@ dialog::backdrop {
   }
 }
 
+/* -------------------------------------------------------------
+ * Multi-Stage Tabs & Progress
+ * ------------------------------------------------------------- */
+.stage-nav-container {
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.stage-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 0.4rem;
+}
+
+.stage-progress-percent {
+  color: #16a34a;
+}
+
+.stage-progress-track {
+  width: 100%;
+  height: 6px;
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 0.85rem;
+}
+
+.stage-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #2563eb, #10b981);
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
+
+.form-tabs-nav {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.form-tabs-list {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  padding-bottom: 0.25rem;
+  min-width: min-content;
+}
+
+.stage-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background-color: #f9fafb;
+  color: #4b5563;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.stage-tab-btn:hover {
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
+  color: #111827;
+}
+
+.stage-tab-btn.is-active {
+  background-color: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.stage-tab-btn.is-complete {
+  background-color: #f0fdf4;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.stage-tab-btn.is-complete.is-active {
+  background-color: #dcfce7;
+  border-color: #16a34a;
+  box-shadow: 0 0 0 1px #16a34a;
+  color: #15803d;
+}
+
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background-color: #e5e7eb;
+  color: #6b7280;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.stage-tab-btn.is-active .tab-badge {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+.stage-tab-btn.is-complete .tab-badge {
+  background-color: #16a34a;
+  color: #ffffff;
+}
+
+.tab-tick {
+  display: none;
+}
+
+.stage-tab-btn.is-complete .tab-num {
+  display: none;
+}
+
+.stage-tab-btn.is-complete .tab-tick {
+  display: inline-block;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.stage-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #f3f4f6;
+}
+
+.stage-actions .btn-prev-stage,
+.stage-actions .btn-next-stage {
+  min-width: 120px;
+}
+
+

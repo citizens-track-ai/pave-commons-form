@@ -1,6 +1,7 @@
 /**
  * PAVE Form Application Logic
- * Supports new submission and editing of existing 'Completed' cases with valid EditKey
+ * Supports new submission and editing of existing cases with valid EditKey
+ * Multi-stage tabbed navigation with real-time stage completion tick-marks
  */
 
 const state = {
@@ -8,6 +9,7 @@ const state = {
   caseId: null,
   editKey: null,
   submissionIntent: "nomination",
+  currentStageId: "stage-1",
   leadOrganisations: [],      // Array of { id, name } OR { name, isNew: true, website?: string }
   fundingOrganisations: [],
   involvedOrganisations: [],
@@ -15,13 +17,230 @@ const state = {
   resources: [],             // Array of resource objects
 };
 
+const STAGES_CONFIG = [
+  { id: "stage-1", label: "1. About You", isFullOnly: false },
+  { id: "stage-2", label: "2. Project Details", isFullOnly: false },
+  { id: "stage-3", label: "3. Organisations", isFullOnly: true },
+  { id: "stage-4", label: "4. Focus of Engagement", isFullOnly: true },
+  { id: "stage-5", label: "5. Participants", isFullOnly: true },
+  { id: "stage-6", label: "6. Headline Findings", isFullOnly: true },
+  { id: "stage-7", label: "7. Supporting Resources", isFullOnly: true },
+  { id: "stage-8", label: "8. Consent & Submit", isFullOnly: false },
+];
+
+function getActiveStages() {
+  const isFull = state.submissionIntent === "full" || state.isEditMode;
+  return STAGES_CONFIG.filter((s) => !s.isFullOnly || isFull);
+}
+
+function isStageComplete(stageId) {
+  switch (stageId) {
+    case "stage-1": {
+      const email = (document.getElementById("submitterEmail")?.value || "").trim();
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    }
+    case "stage-2": {
+      const title = (document.getElementById("projectTitle")?.value || "").trim();
+      const url = (document.getElementById("projectUrl")?.value || "").trim();
+      const desc = (document.getElementById("projectDescription")?.value || "").trim();
+      return title.length > 0 && isValidClientUrl(url) && desc.length >= 5;
+    }
+    case "stage-3": {
+      return (
+        state.leadOrganisations.length > 0 ||
+        state.fundingOrganisations.length > 0 ||
+        state.involvedOrganisations.length > 0
+      );
+    }
+    case "stage-4": {
+      const aiForms = getCheckedValues("aiForms");
+      const subject = (document.getElementById("subjectMatter")?.value || "").trim();
+      const goals = getCheckedValues("projectGoals");
+      return aiForms.length > 0 || subject.length > 0 || goals.length > 0;
+    }
+    case "stage-5": {
+      const inclusion = (document.getElementById("inclusionEfforts")?.value || "").trim();
+      const limitations = (document.getElementById("limitations")?.value || "").trim();
+      return state.participants.length > 0 || inclusion.length > 0 || limitations.length > 0;
+    }
+    case "stage-6": {
+      const findings = (document.getElementById("headlineFindings")?.value || "").trim();
+      const aiAssistance = getCheckedValues("aiAssistance");
+      return findings.length > 0 || aiAssistance.length > 0;
+    }
+    case "stage-7": {
+      const published = getCheckedValues("publishedResources");
+      const photos = getCheckedValues("photosAvailable");
+      return published.length > 0 || state.resources.length > 0 || photos.length > 0;
+    }
+    case "stage-8": {
+      return Boolean(document.getElementById("consentCheck")?.checked);
+    }
+    default:
+      return false;
+  }
+}
+
+function renderStageTabs() {
+  const tabsList = document.getElementById("formTabsList");
+  if (!tabsList) return;
+
+  const activeStages = getActiveStages();
+  tabsList.innerHTML = "";
+
+  activeStages.forEach((stage, idx) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "stage-tab-btn";
+    btn.id = `tab-${stage.id}`;
+    btn.dataset.stageId = stage.id;
+    btn.setAttribute("role", "tab");
+    btn.setAttribute("aria-selected", stage.id === state.currentStageId ? "true" : "false");
+    btn.setAttribute("aria-controls", stage.id);
+
+    const isDone = isStageComplete(stage.id);
+    if (isDone) btn.classList.add("is-complete");
+    if (stage.id === state.currentStageId) btn.classList.add("is-active");
+
+    btn.innerHTML = `
+      <span class="tab-badge">
+        <span class="tab-num">${idx + 1}</span>
+        <span class="tab-tick" aria-hidden="true">&#10003;</span>
+      </span>
+      <span class="tab-label">${escapeHtml(stage.label)}</span>
+    `;
+
+    btn.addEventListener("click", () => {
+      goToStage(stage.id);
+    });
+
+    tabsList.appendChild(btn);
+  });
+
+  updateStageProgress();
+}
+
+function updateStageProgress() {
+  const activeStages = getActiveStages();
+  let completedCount = 0;
+
+  activeStages.forEach((stage) => {
+    const isDone = isStageComplete(stage.id);
+    if (isDone) completedCount++;
+
+    const tabBtn = document.getElementById(`tab-${stage.id}`);
+    if (tabBtn) {
+      if (isDone) {
+        tabBtn.classList.add("is-complete");
+      } else {
+        tabBtn.classList.remove("is-complete");
+      }
+      if (stage.id === state.currentStageId) {
+        tabBtn.classList.add("is-active");
+        tabBtn.setAttribute("aria-selected", "true");
+      } else {
+        tabBtn.classList.remove("is-active");
+        tabBtn.setAttribute("aria-selected", "false");
+      }
+    }
+  });
+
+  const total = activeStages.length;
+  const currentIdx = activeStages.findIndex((s) => s.id === state.currentStageId);
+  const currentNum = currentIdx >= 0 ? currentIdx + 1 : 1;
+  const currentStage = activeStages[currentIdx] || activeStages[0];
+
+  const labelEl = document.getElementById("stageProgressLabel");
+  const percentEl = document.getElementById("stageProgressPercent");
+  const fillEl = document.getElementById("stageProgressFill");
+
+  if (labelEl) {
+    labelEl.textContent = `Stage ${currentNum} of ${total}: ${currentStage ? currentStage.label : ""}`;
+  }
+  const pct = Math.round((completedCount / total) * 100);
+  if (percentEl) {
+    percentEl.textContent = `${completedCount} of ${total} Completed (${pct}%)`;
+  }
+  if (fillEl) {
+    fillEl.style.width = `${pct}%`;
+  }
+}
+
+function goToStage(targetStageId) {
+  const activeStages = getActiveStages();
+  const exists = activeStages.some((s) => s.id === targetStageId);
+  if (!exists) targetStageId = activeStages[0].id;
+
+  state.currentStageId = targetStageId;
+
+  // Show only current stage
+  document.querySelectorAll(".form-stage").forEach((panel) => {
+    if (panel.id === targetStageId) {
+      panel.classList.remove("hidden");
+    } else {
+      panel.classList.add("hidden");
+    }
+  });
+
+  // Update dynamic Next / Back links based on current active stages sequence
+  const isFull = state.submissionIntent === "full" || state.isEditMode;
+
+  const stage2NextBtn = document.getElementById("stage2NextBtn");
+  if (stage2NextBtn) {
+    stage2NextBtn.dataset.target = isFull ? "stage-3" : "stage-8";
+    stage2NextBtn.innerHTML = isFull ? "Next: Organisations &rarr;" : "Next: Consent &amp; Submit &rarr;";
+  }
+
+  const stage8PrevBtn = document.getElementById("stage8PrevBtn");
+  if (stage8PrevBtn) {
+    stage8PrevBtn.dataset.target = isFull ? "stage-7" : "stage-2";
+    stage8PrevBtn.innerHTML = isFull ? "&larr; Back: Supporting Resources" : "&larr; Back: Project Details";
+  }
+
+  updateStageProgress();
+
+  // Scroll smoothly to stage tabs container
+  const navContainer = document.querySelector(".stage-nav-container");
+  if (navContainer) {
+    navContainer.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+function initStageNavigation() {
+  document.addEventListener("click", (e) => {
+    const nextBtn = e.target.closest(".btn-next-stage");
+    if (nextBtn) {
+      const target = nextBtn.dataset.target;
+      if (target) goToStage(target);
+      return;
+    }
+
+    const prevBtn = e.target.closest(".btn-prev-stage");
+    if (prevBtn) {
+      const target = prevBtn.dataset.target;
+      if (target) goToStage(target);
+      return;
+    }
+  });
+
+  // Listen to input and change events across the whole form to update tick marks immediately
+  const form = document.getElementById("caseForm");
+  if (form) {
+    form.addEventListener("input", () => updateStageProgress());
+    form.addEventListener("change", () => updateStageProgress());
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initIntentToggle();
+  initStageNavigation();
   initOrgPickers();
   initParticipantManager();
   initResourceManager();
   initFormSubmission();
   checkEditMode();
+  renderStageTabs();
+  goToStage("stage-1");
 });
 
 /* -------------------------------------------------------------
@@ -84,7 +303,8 @@ async function checkEditMode() {
     state.submissionIntent = "full";
     const fullRadio = document.querySelector('input[name="submissionIntent"][value="full"]');
     if (fullRadio) fullRadio.checked = true;
-    document.getElementById("fullCaseSection").classList.remove("hidden");
+    const fullStages = document.getElementById("fullCaseStages");
+    if (fullStages) fullStages.classList.remove("hidden");
 
     // Set hidden inputs
     document.getElementById("caseId").value = c.id;
@@ -136,6 +356,10 @@ async function checkEditMode() {
     bannerTitle.textContent = `Editing Case #${c.id}: "${c.projectTitle}"`;
     bannerSubtitle.textContent = `Status: ${c.workflowStatus}. Submitting will update the existing database record.`;
     document.getElementById("submitBtn").textContent = "Save Changes";
+
+    renderStageTabs();
+    goToStage("stage-1");
+    updateStageProgress();
   } catch (err) {
     banner.classList.add("error-banner");
     bannerTitle.textContent = "Error Loading Record";
@@ -149,16 +373,27 @@ async function checkEditMode() {
  * ------------------------------------------------------------- */
 function initIntentToggle() {
   const radios = document.querySelectorAll('input[name="submissionIntent"]');
-  const fullSection = document.getElementById("fullCaseSection");
 
   radios.forEach((radio) => {
     radio.addEventListener("change", (e) => {
       state.submissionIntent = e.target.value;
-      if (e.target.value === "full") {
-        fullSection.classList.remove("hidden");
-      } else {
-        fullSection.classList.add("hidden");
+      const isFull = e.target.value === "full";
+      const fullSection = document.getElementById("fullCaseStages");
+      if (fullSection) {
+        if (isFull) {
+          fullSection.classList.remove("hidden");
+        } else {
+          fullSection.classList.add("hidden");
+        }
       }
+
+      const activeStages = getActiveStages();
+      if (!activeStages.some((s) => s.id === state.currentStageId)) {
+        goToStage(activeStages[0].id);
+      } else {
+        goToStage(state.currentStageId);
+      }
+      renderStageTabs();
     });
   });
 }
@@ -218,6 +453,7 @@ function setupOrgPicker(containerId, stateKey) {
           if (!alreadyAdded) {
             state[stateKey].push(selectedItem);
             renderSelectedTags(tagsEl, stateKey);
+            updateStageProgress();
           }
 
           inputEl.value = "";
@@ -276,9 +512,11 @@ function renderSelectedTags(tagsEl, stateKey) {
     tag.querySelector("button").addEventListener("click", () => {
       state[stateKey].splice(index, 1);
       renderSelectedTags(tagsEl, stateKey);
+      updateStageProgress();
     });
     tagsEl.appendChild(tag);
   });
+  updateStageProgress();
 }
 
 /* -------------------------------------------------------------
@@ -384,6 +622,7 @@ function initParticipantManager() {
     }
 
     renderParticipantsList(listEl);
+    updateStageProgress();
     modal.close();
   });
 }
@@ -445,6 +684,7 @@ function renderParticipantsList(listEl) {
       e.stopPropagation();
       state.participants.splice(idx, 1);
       renderParticipantsList(listEl);
+      updateStageProgress();
     });
 
     listEl.appendChild(card);
@@ -533,6 +773,7 @@ function initResourceManager() {
     }
 
     renderResourcesList(listEl);
+    updateStageProgress();
     modal.close();
   });
 }
@@ -587,6 +828,7 @@ function renderResourcesList(listEl) {
       e.stopPropagation();
       state.resources.splice(idx, 1);
       renderResourcesList(listEl);
+      updateStageProgress();
     });
 
     listEl.appendChild(card);
@@ -604,22 +846,24 @@ function initFormSubmission() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
+    if (!isStageComplete("stage-1")) {
+      goToStage("stage-1");
+      alert("Please provide a valid contact email in Stage 1 before submitting.");
+      document.getElementById("submitterEmail")?.focus();
+      return;
+    }
+
+    if (!isStageComplete("stage-2")) {
+      goToStage("stage-2");
+      alert("Please ensure Project Title, a valid Project URL (http/https), and Brief Description are filled in Stage 2.");
+      document.getElementById("projectTitle")?.focus();
+      return;
+    }
+
     if (!document.getElementById("consentCheck").checked) {
-      alert("Please check the consent box before submitting.");
-      return;
-    }
-
-    const projectUrl = document.getElementById("projectUrl").value.trim();
-    if (projectUrl && !isValidClientUrl(projectUrl)) {
-      alert("Project URL must be a valid http:// or https:// address.");
-      document.getElementById("projectUrl").focus();
-      return;
-    }
-
-    const email = document.getElementById("submitterEmail").value.trim();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      alert("Please enter a valid email address.");
-      document.getElementById("submitterEmail").focus();
+      goToStage("stage-8");
+      alert("Please agree to the consent statement before submitting.");
+      document.getElementById("consentCheck")?.focus();
       return;
     }
 
