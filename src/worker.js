@@ -218,11 +218,11 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
   const status = (caseRecord["Workflow: Status"] || "").trim().toLowerCase();
   const storedKey = (caseRecord["EditKey"] || "").trim();
 
-  // Validate condition: Workflow: Status must be 'completed'
-  if (status !== "completed") {
+  // Validate condition: 'Completed' cases should NOT be possible to edit
+  if (status === "completed") {
     return jsonResponse(
       {
-        error: "This case cannot be edited because its status is not 'Completed'.",
+        error: "This case has been marked as 'Completed' and can no longer be edited.",
         currentStatus: caseRecord["Workflow: Status"],
       },
       403,
@@ -257,13 +257,13 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
         groupDescription: p["Group description"] || "",
         participantCount: p["How many people took part?"] || "",
         engagementHours: p["On average, how many hours did each participant engage for?"] || "",
-        engagementLocations: p["Where did engagement take place?"] || [],
+        engagementLocations: ensureArray(p["Where did engagement take place?"]),
         recruitmentMethod: p["Recruitment method"] || "",
         recruitmentDescription: p["Recruitment description"] || "",
         targetPopulation: p["Was there a specific target population?"] || "",
         geographicOrigin: p["Where were participants from?"] || "",
-        engagementMethods: p["Which of the following methods were used to engage participants?"] || [],
-        learningFacilitationOptions: p["Do any of the following apply?"] || [],
+        engagementMethods: ensureArray(p["Which of the following methods were used to engage participants?"]),
+        learningFacilitationOptions: ensureArray(p["Do any of the following apply?"]),
         notes: p["Additional notes"] || "",
       }));
     }
@@ -310,23 +310,23 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
         projectUrl: caseRecord["Project URL"] || "",
         projectDescription: caseRecord["Provide a brief description of the project"] || "",
         importanceReason: caseRecord["Why is this project important to include in the case book?"] || "",
-        initiatedMethods: caseRecord["How was the project initiated?"] || [],
+        initiatedMethods: ensureArray(caseRecord["How was the project initiated?"]),
         startYear: caseRecord["What year did the project start?"] || "",
         projectStatus: caseRecord["Project status"] || "",
         endYear: caseRecord["What year did the project conclude?"] || "",
         submitterName: caseRecord["Submitted by"] || "",
         submitterEmail: caseRecord["Contact e-mail"] || "",
-        submitterRoles: caseRecord["Submitter role"] || [],
+        submitterRoles: ensureArray(caseRecord["Submitter role"]),
         additionalAcknowledgements: caseRecord["Additional acknowledgements"] || "",
-        aiForms: caseRecord["What form of AI is the project about?"] || [],
+        aiForms: ensureArray(caseRecord["What form of AI is the project about?"]),
         subjectMatter: caseRecord["Describe the subject matter in your own words (one line)"] || "",
-        projectGoals: caseRecord["Project goals"] || [],
+        projectGoals: ensureArray(caseRecord["Project goals"]),
         inclusionEfforts: caseRecord["Inclusion efforts"] || "",
         limitations: caseRecord["What limitations to the project should be noted?"] || "",
         headlineFindings: caseRecord["Headline findings"] || "",
-        aiAssistance: caseRecord["Was AI used to assist in summary generation?"] || [],
-        publishedResources: caseRecord["Which of the following resources are available for this project?"] || [],
-        photosAvailable: caseRecord["Photos available?"] || [],
+        aiAssistance: ensureArray(caseRecord["Was AI used to assist in summary generation?"]),
+        publishedResources: ensureArray(caseRecord["Which of the following resources are available for this project?"]),
+        photosAvailable: ensureArray(caseRecord["Photos available?"]),
         leadOrganisations: formatOrgLink(caseRecord["Lead organisations"]),
         fundingOrganisations: formatOrgLink(caseRecord["Funding Organisations"]),
         involvedOrganisations: formatOrgLink(caseRecord["Involved organisations"]),
@@ -391,9 +391,9 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     const status = (existingRec["Workflow: Status"] || "").trim().toLowerCase();
     const storedKey = (existingRec["EditKey"] || "").trim();
 
-    if (status !== "completed") {
+    if (status === "completed") {
       return jsonResponse(
-        { error: "Editing is permitted only for cases with 'Completed' status." },
+        { error: "This case has been marked as 'Completed' and can no longer be edited." },
         403,
         corsHeaders
       );
@@ -855,3 +855,22 @@ function jsonResponse(data, status = 200, headers = {}) {
     },
   });
 }
+
+function ensureArray(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) {
+    return val.map((item) => (typeof item === "object" && item !== null ? item.title || item.Name || String(item) : String(item).trim())).filter(Boolean);
+  }
+  if (typeof val === "string") {
+    val = val.trim();
+    if (val.startsWith("[") && val.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(val);
+        return ensureArray(parsed);
+      } catch (e) {}
+    }
+    return val.split(",").map((s) => s.trim()).filter(Boolean);
+  }
+  return [String(val)];
+}
+

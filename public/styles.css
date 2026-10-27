@@ -383,6 +383,24 @@ dialog::backdrop {
   white-space: nowrap;
 }
 
+.edit-banner.error-banner {
+  background-color: #fef2f2;
+  border-color: #fca5a5;
+  border-left-color: #ef4444;
+}
+
+.edit-banner.error-banner .badge {
+  background-color: #ef4444;
+}
+
+.edit-banner.error-banner strong {
+  color: #991b1b;
+}
+
+.edit-banner.error-banner p {
+  color: #b91c1c;
+}
+
 .btn-cancel-edit:hover {
   color: #111827;
 }

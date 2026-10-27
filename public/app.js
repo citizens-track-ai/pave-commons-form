@@ -43,6 +43,7 @@ async function checkEditMode() {
     banner.classList.add("error-banner");
     bannerTitle.textContent = "Edit Access Denied";
     bannerSubtitle.textContent = "The provided EditKey is invalid (must be at least 12 characters).";
+    document.getElementById("caseForm").classList.add("hidden");
     return;
   }
 
@@ -63,6 +64,7 @@ async function checkEditMode() {
       banner.classList.add("error-banner");
       bannerTitle.textContent = "Cannot Edit This Record";
       bannerSubtitle.textContent = data.error || "Unable to authorize editing for this record.";
+      document.getElementById("caseForm").classList.add("hidden");
       return;
     }
 
@@ -70,6 +72,19 @@ async function checkEditMode() {
     state.isEditMode = true;
     state.caseId = c.id;
     state.editKey = c.editKey;
+
+    // Show form
+    document.getElementById("caseForm").classList.remove("hidden");
+
+    // Hide 'What would you like to do' option when editing
+    const intentEl = document.getElementById("intentFieldset");
+    if (intentEl) intentEl.classList.add("hidden");
+
+    // Always go to 'Provide full case book entry'
+    state.submissionIntent = "full";
+    const fullRadio = document.querySelector('input[name="submissionIntent"][value="full"]');
+    if (fullRadio) fullRadio.checked = true;
+    document.getElementById("fullCaseSection").classList.remove("hidden");
 
     // Set hidden inputs
     document.getElementById("caseId").value = c.id;
@@ -117,12 +132,6 @@ async function checkEditMode() {
     state.resources = c.resources || [];
     renderResourcesList(document.getElementById("resourcesList"));
 
-    // Switch intent to Full Case and reveal sections
-    const fullRadio = document.querySelector('input[name="submissionIntent"][value="full"]');
-    if (fullRadio) fullRadio.checked = true;
-    state.submissionIntent = "full";
-    document.getElementById("fullCaseSection").classList.remove("hidden");
-
     // Update banner and submit button
     bannerTitle.textContent = `Editing Case #${c.id}: "${c.projectTitle}"`;
     bannerSubtitle.textContent = `Status: ${c.workflowStatus}. Submitting will update the existing database record.`;
@@ -131,6 +140,7 @@ async function checkEditMode() {
     banner.classList.add("error-banner");
     bannerTitle.textContent = "Error Loading Record";
     bannerSubtitle.textContent = err.message;
+    document.getElementById("caseForm").classList.add("hidden");
   }
 }
 
@@ -341,6 +351,10 @@ function renderParticipantsList(listEl) {
   state.participants.forEach((p, idx) => {
     const card = document.createElement("div");
     card.className = "repeater-card";
+    const methods = Array.isArray(p.engagementMethods)
+      ? p.engagementMethods
+      : (typeof p.engagementMethods === "string" ? p.engagementMethods.split(",").map((s) => s.trim()).filter(Boolean) : []);
+
     card.innerHTML = `
       <div class="card-header">
         <strong>${idx + 1}. ${escapeHtml(p.groupDescription)}</strong>
@@ -350,7 +364,7 @@ function renderParticipantsList(listEl) {
         ${p.participantCount ? `<span><strong>Count:</strong> ${escapeHtml(p.participantCount)}</span> ` : ""}
         ${p.engagementHours ? `<span><strong>Hours:</strong> ${escapeHtml(p.engagementHours)}h</span> ` : ""}
         ${p.recruitmentMethod ? `<span><strong>Recruitment:</strong> ${escapeHtml(p.recruitmentMethod)}</span> ` : ""}
-        ${p.engagementMethods && p.engagementMethods.length > 0 ? `<div><small>Methods: ${p.engagementMethods.map(escapeHtml).join(", ")}</small></div>` : ""}
+        ${methods.length > 0 ? `<div><small>Methods: ${methods.map(escapeHtml).join(", ")}</small></div>` : ""}
       </div>
     `;
     card.querySelector(".btn-remove").addEventListener("click", () => {
@@ -561,10 +575,13 @@ function getCheckedValues(name) {
 }
 
 function setCheckedValues(name, values) {
-  if (!Array.isArray(values)) return;
+  if (!values) return;
+  const arr = Array.isArray(values)
+    ? values
+    : (typeof values === "string" ? values.split(",").map((s) => s.trim()).filter(Boolean) : [values]);
   const checkboxes = document.querySelectorAll(`input[name="${name}"]`);
   checkboxes.forEach((cb) => {
-    cb.checked = values.includes(cb.value);
+    cb.checked = arr.includes(cb.value);
   });
 }
 

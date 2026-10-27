@@ -27,6 +27,21 @@
       <input type="hidden" id="caseId" name="caseId">
       <input type="hidden" id="editKey" name="editKey">
 
+      <!-- Intent: What would you like to do? -->
+      <fieldset id="intentFieldset">
+        <legend>What would you like to do? *</legend>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="submissionIntent" value="nomination" checked>
+            <strong>Nominate a project</strong> (provide a quick summary only)
+          </label>
+          <label>
+            <input type="radio" name="submissionIntent" value="full">
+            <strong>Provide a full casebook entry</strong> (describe the project in full)
+          </label>
+        </div>
+      </fieldset>
+
       <!-- Section 1: Submitter Info -->
       <fieldset>
         <legend>1. About You</legend>
@@ -51,20 +66,6 @@
             <label><input type="checkbox" name="submitterRoles" value="Observer"> Observer</label>
             <label><input type="checkbox" name="submitterRoles" value="Other"> Other</label>
             <label><input type="checkbox" name="submitterRoles" value="Not involved"> Not involved</label>
-          </div>
-        </div>
-
-        <div class="form-group">
-          <label>What would you like to do? *</label>
-          <div class="radio-group">
-            <label>
-              <input type="radio" name="submissionIntent" value="nomination" checked>
-              <strong>Nominate a project</strong> (provide a quick summary only)
-            </label>
-            <label>
-              <input type="radio" name="submissionIntent" value="full">
-              <strong>Provide a full casebook entry</strong> (describe the project in full)
-            </label>
           </div>
         </div>
 
