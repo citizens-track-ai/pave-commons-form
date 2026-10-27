@@ -24,6 +24,7 @@ const LINK_FIELDS = {
   CASE_FUNDING_ORGS: "ctry6dyg5238w16",
   CASE_INVOLVED_ORGS: "crlcp2kthfjwijy",
   CASE_PARTICIPANTS: "clfmrd6qe6r4l6w",
+  CASE_RESOURCES: "c3ph7cav2ieep3q",
   PARTICIPANT_CASE: "cl440n84ovf0nxu",
   RESOURCE_CASE: "cd7i3ulk36wvuhg",
 };
@@ -36,7 +37,7 @@ const MAX_ORGS_PER_FIELD = 20;
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const corsHeaders = getCorsHeaders(request, env);
+    const corsHeaders = getCorsHeaders();
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
@@ -60,12 +61,17 @@ export default {
         return await handleSearchOrganisations(url, nocodbBaseUrl, nocodbToken, corsHeaders);
       }
 
-      // 2. Submit Case Form endpoint
-      if (url.pathname === "/api/submit" && request.method === "POST") {
-        return await handleSubmitCase(request, nocodbBaseUrl, nocodbToken, corsHeaders);
+      // 2. Load case for editing endpoint
+      if (url.pathname === "/api/case" && request.method === "GET") {
+        return await handleGetCaseForEdit(url, nocodbBaseUrl, nocodbToken, corsHeaders);
       }
 
-      // 3. Static asset serving when deployed as Cloudflare Worker with [assets]
+      // 3. Submit or Edit Case Form endpoint
+      if (url.pathname === "/api/submit" && request.method === "POST") {
+        return await handleSubmitOrEditCase(request, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
+      // 4. Static asset serving when deployed as Cloudflare Worker with [assets]
       if (env.ASSETS) {
         return await env.ASSETS.fetch(request);
       }
@@ -84,13 +90,11 @@ export default {
 
 /**
  * Handle searching organisations in NocoDB table
- * Enforces sanitization and minimum length to prevent filter injection and full table scraping.
  */
 async function handleSearchOrganisations(url, baseUrl, token, corsHeaders) {
   const rawQuery = url.searchParams.get("q") || "";
   const query = sanitizeSearchQuery(rawQuery);
 
-  // Measure 1.C: Disallow empty or 1-character queries to prevent full database enumeration
   if (query.length < 2) {
     return jsonResponse(
       {
@@ -104,7 +108,6 @@ async function handleSearchOrganisations(url, baseUrl, token, corsHeaders) {
     );
   }
 
-  // Measure 1.B: Filter injection prevention: safe alphanumeric string with strict operators
   const encodedQuery = encodeURIComponent(`(Name,like,%${query}%)`);
   const nocoUrl = `${baseUrl}/api/v2/tables/${TABLES.ORGANISATIONS}/records?where=${encodedQuery}&limit=25&fields=Id,Name,Website address,Organisation type`;
 
@@ -114,7 +117,6 @@ async function handleSearchOrganisations(url, baseUrl, token, corsHeaders) {
 
   if (!res.ok) {
     const errorDetails = await res.text();
-    // Measure 3.C: Mask internal error details from public response
     console.error("NocoDB query error:", res.status, errorDetails);
     return jsonResponse(
       { error: "Failed to search organisations. Please try again." },
@@ -126,7 +128,6 @@ async function handleSearchOrganisations(url, baseUrl, token, corsHeaders) {
   const data = await res.json();
   const list = (data.list || []).map(formatOrg);
 
-  // Check if there is an exact case-insensitive match
   const hasExactMatch = list.some(
     (org) => org.name.toLowerCase() === query.toLowerCase()
   );
@@ -140,7 +141,6 @@ async function handleSearchOrganisations(url, baseUrl, token, corsHeaders) {
     200,
     {
       ...corsHeaders,
-      // Cache common searches at Cloudflare Edge for 60 seconds
       "Cache-Control": "public, max-age=60",
     }
   );
@@ -156,11 +156,193 @@ function formatOrg(raw) {
 }
 
 /**
- * Handle complete Case submission
- * Enforces size limits, strict URL checks, bounded arrays, and sanitized errors.
+ * Handle GET /api/case?editKey=...[&id=...]
+ * Conditions:
+ * 1. editKey is provided and length >= 12
+ * 2. Record exists and its stored EditKey matches and is >= 12 characters
+ * 3. Workflow: Status is 'Completed'
  */
-async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
-  // Measure 3.A: Request body size limit
+async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
+  const editKey = sanitizeString(url.searchParams.get("editKey") || url.searchParams.get("editkey") || "", 60);
+  const rawId = url.searchParams.get("id") || url.searchParams.get("caseId") || "";
+  const caseId = rawId ? Number(rawId) : null;
+
+  if (!editKey || editKey.length < 12) {
+    return jsonResponse(
+      { error: "A valid edit key of at least 12 characters is required." },
+      400,
+      corsHeaders
+    );
+  }
+
+  // Construct query: by EditKey and optional ID
+  let whereClause = `(EditKey,eq,${editKey})`;
+  if (caseId && !isNaN(caseId)) {
+    whereClause = `(Id,eq,${caseId})~and(EditKey,eq,${editKey})`;
+  }
+
+  const queryUrl = `${baseUrl}/api/v2/tables/${TABLES.CASES}/records?where=${encodeURIComponent(whereClause)}&limit=1`;
+  const res = await fetch(queryUrl, {
+    headers: { "xc-token": token },
+  });
+
+  if (!res.ok) {
+    console.error("Failed to query case for edit:", res.status, await res.text());
+    return jsonResponse({ error: "Failed to look up case." }, 502, corsHeaders);
+  }
+
+  const data = await res.json();
+  const cases = data.list || [];
+
+  if (cases.length === 0) {
+    return jsonResponse(
+      { error: "Case not found or invalid edit key." },
+      404,
+      corsHeaders
+    );
+  }
+
+  const rawCase = cases[0];
+  const targetId = rawCase.Id || rawCase.id;
+
+  // Retrieve complete record with linked fields
+  const detailRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records/${targetId}`, {
+    headers: { "xc-token": token },
+  });
+
+  if (!detailRes.ok) {
+    return jsonResponse({ error: "Failed to load case details." }, 502, corsHeaders);
+  }
+
+  const caseRecord = await detailRes.json();
+  const status = (caseRecord["Workflow: Status"] || "").trim().toLowerCase();
+  const storedKey = (caseRecord["EditKey"] || "").trim();
+
+  // Validate condition: Workflow: Status must be 'completed'
+  if (status !== "completed") {
+    return jsonResponse(
+      {
+        error: "This case cannot be edited because its status is not 'Completed'.",
+        currentStatus: caseRecord["Workflow: Status"],
+      },
+      403,
+      corsHeaders
+    );
+  }
+
+  // Validate condition: Stored EditKey must be at least 12 characters and match
+  if (storedKey.length < 12 || storedKey !== editKey) {
+    return jsonResponse(
+      { error: "Invalid edit key for this case." },
+      403,
+      corsHeaders
+    );
+  }
+
+  // Fetch linked participant details if present
+  let participants = [];
+  const linkedParts = caseRecord["Participants"] || [];
+  const partIds = linkedParts.map((p) => p.Id || p.id).filter(Boolean);
+
+  if (partIds.length > 0) {
+    const partsWhere = encodeURIComponent(`(Id,in,${partIds.join(",")})`);
+    const partsRes = await fetch(
+      `${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records?where=${partsWhere}&limit=50`,
+      { headers: { "xc-token": token } }
+    );
+    if (partsRes.ok) {
+      const partsData = await partsRes.json();
+      participants = (partsData.list || []).map((p) => ({
+        id: p.Id || p.id,
+        groupDescription: p["Group description"] || "",
+        participantCount: p["How many people took part?"] || "",
+        engagementHours: p["On average, how many hours did each participant engage for?"] || "",
+        engagementLocations: p["Where did engagement take place?"] || [],
+        recruitmentMethod: p["Recruitment method"] || "",
+        recruitmentDescription: p["Recruitment description"] || "",
+        targetPopulation: p["Was there a specific target population?"] || "",
+        geographicOrigin: p["Where were participants from?"] || "",
+        engagementMethods: p["Which of the following methods were used to engage participants?"] || [],
+        learningFacilitationOptions: p["Do any of the following apply?"] || [],
+        notes: p["Additional notes"] || "",
+      }));
+    }
+  }
+
+  // Fetch linked resources if present
+  let resources = [];
+  const linkedResources = caseRecord["Supporting resources"] || [];
+  const resIds = linkedResources.map((r) => r.Id || r.id).filter(Boolean);
+
+  if (resIds.length > 0) {
+    const resWhere = encodeURIComponent(`(Id,in,${resIds.join(",")})`);
+    const resourcesRes = await fetch(
+      `${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records?where=${resWhere}&limit=50`,
+      { headers: { "xc-token": token } }
+    );
+    if (resourcesRes.ok) {
+      const resData = await resourcesRes.json();
+      resources = (resData.list || []).map((r) => ({
+        id: r.Id || r.id,
+        title: r["Title"] || "",
+        url: r["URL"] || "",
+        resourceType: r["Select"] || "Other",
+        description: r["Short description"] || "",
+        license: r["License"] || "",
+      }));
+    }
+  }
+
+  // Format organisation lists
+  const formatOrgLink = (arr) =>
+    (arr || []).map((o) => ({
+      id: o.Id || o.id,
+      name: o.Name || o["cqkqjxbtc9sjzuk"] || "Organisation #" + (o.Id || o.id),
+    }));
+
+  return jsonResponse(
+    {
+      case: {
+        id: targetId,
+        editKey: storedKey,
+        workflowStatus: caseRecord["Workflow: Status"],
+        projectTitle: caseRecord["Project Title"] || "",
+        projectUrl: caseRecord["Project URL"] || "",
+        projectDescription: caseRecord["Provide a brief description of the project"] || "",
+        importanceReason: caseRecord["Why is this project important to include in the case book?"] || "",
+        initiatedMethods: caseRecord["How was the project initiated?"] || [],
+        startYear: caseRecord["What year did the project start?"] || "",
+        projectStatus: caseRecord["Project status"] || "",
+        endYear: caseRecord["What year did the project conclude?"] || "",
+        submitterName: caseRecord["Submitted by"] || "",
+        submitterEmail: caseRecord["Contact e-mail"] || "",
+        submitterRoles: caseRecord["Submitter role"] || [],
+        additionalAcknowledgements: caseRecord["Additional acknowledgements"] || "",
+        aiForms: caseRecord["What form of AI is the project about?"] || [],
+        subjectMatter: caseRecord["Describe the subject matter in your own words (one line)"] || "",
+        projectGoals: caseRecord["Project goals"] || [],
+        inclusionEfforts: caseRecord["Inclusion efforts"] || "",
+        limitations: caseRecord["What limitations to the project should be noted?"] || "",
+        headlineFindings: caseRecord["Headline findings"] || "",
+        aiAssistance: caseRecord["Was AI used to assist in summary generation?"] || [],
+        publishedResources: caseRecord["Which of the following resources are available for this project?"] || [],
+        photosAvailable: caseRecord["Photos available?"] || [],
+        leadOrganisations: formatOrgLink(caseRecord["Lead organisations"]),
+        fundingOrganisations: formatOrgLink(caseRecord["Funding Organisations"]),
+        involvedOrganisations: formatOrgLink(caseRecord["Involved organisations"]),
+        participants,
+        resources,
+      },
+    },
+    200,
+    corsHeaders
+  );
+}
+
+/**
+ * Handle Case submission (Create new OR Update existing)
+ */
+async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
   const contentLength = request.headers.get("content-length");
   if (contentLength && parseInt(contentLength, 10) > MAX_PAYLOAD_BYTES) {
     return jsonResponse(
@@ -181,6 +363,53 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     return jsonResponse({ error: "Invalid request format." }, 400, corsHeaders);
   }
 
+  const isEditMode = Boolean(payload.caseId && payload.editKey);
+  let existingCaseId = null;
+
+  // If in edit mode, strictly verify authorization conditions
+  if (isEditMode) {
+    const editKey = sanitizeString(payload.editKey, 60);
+    const caseId = Number(payload.caseId);
+
+    if (!editKey || editKey.length < 12 || isNaN(caseId)) {
+      return jsonResponse(
+        { error: "Invalid edit credentials provided." },
+        400,
+        corsHeaders
+      );
+    }
+
+    const checkRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records/${caseId}`, {
+      headers: { "xc-token": token },
+    });
+
+    if (!checkRes.ok) {
+      return jsonResponse({ error: "Existing case record not found." }, 404, corsHeaders);
+    }
+
+    const existingRec = await checkRes.json();
+    const status = (existingRec["Workflow: Status"] || "").trim().toLowerCase();
+    const storedKey = (existingRec["EditKey"] || "").trim();
+
+    if (status !== "completed") {
+      return jsonResponse(
+        { error: "Editing is permitted only for cases with 'Completed' status." },
+        403,
+        corsHeaders
+      );
+    }
+
+    if (storedKey.length < 12 || storedKey !== editKey) {
+      return jsonResponse(
+        { error: "Invalid edit key for this case." },
+        403,
+        corsHeaders
+      );
+    }
+
+    existingCaseId = caseId;
+  }
+
   // Validate required Project Title
   const projectTitle = sanitizeString(payload.projectTitle, 250);
   if (!projectTitle) {
@@ -197,7 +426,7 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     );
   }
 
-  // Measure 3.B: Strict URL validation on Project URL
+  // Strict URL validation on Project URL
   const projectUrl = sanitizeString(payload.projectUrl, 500);
   if (projectUrl && !isValidHttpUrl(projectUrl)) {
     return jsonResponse(
@@ -207,7 +436,7 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     );
   }
 
-  // Step 1: Resolve organisations (Lead, Funding, Involved) with bounded array length
+  // Resolve organisations (Lead, Funding, Involved)
   const leadOrgIds = await resolveOrganisations(
     clampArray(payload.leadOrganisations, MAX_ORGS_PER_FIELD),
     baseUrl,
@@ -224,10 +453,9 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     token
   );
 
-  // Step 2: Prepare sanitized Case record
+  // Prepare Case data
   const isNomination = payload.submissionIntent === "nomination";
   const caseData = {
-    // Basic Details
     "Project Title": projectTitle,
     "Project URL": projectUrl || null,
     "Provide a brief description of the project": sanitizeString(payload.projectDescription, 10000) || null,
@@ -236,15 +464,10 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     "What year did the project start?": clampNumber(payload.startYear, 1950, 2050),
     "Project status": sanitizeAllowedOption(payload.projectStatus, ["Planned", "In Progress", "Complete"]),
     "What year did the project conclude?": clampNumber(payload.endYear, 1950, 2050),
-
-    // Submitter
     "Submitted by": sanitizeString(payload.submitterName, 150) || null,
     "Contact e-mail": submitterEmail,
     "Submitter role": sanitizeStringArray(payload.submitterRoles, 10),
-    "Workflow: Status": isNomination ? "Nomination" : "Submission",
     "Additional acknowledgements": sanitizeString(payload.additionalAcknowledgements, 500) || null,
-
-    // Full Case Fields
     "What form of AI is the project about?": sanitizeStringArray(payload.aiForms, 10),
     "Describe the subject matter in your own words (one line)": sanitizeString(payload.subjectMatter, 300) || null,
     "Project goals": sanitizeStringArray(payload.projectGoals, 15),
@@ -256,6 +479,12 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     "Photos available?": sanitizeStringArray(payload.photosAvailable, 5),
   };
 
+  // Only assign workflow status on initial creation (preserve 'Completed' on edits)
+  if (!isEditMode) {
+    caseData["Workflow: Status"] = isNomination ? "Nomination" : "Submission";
+    caseData["EditKey"] = generateSecureKey(16);
+  }
+
   if (leadOrgIds.length > 0) {
     caseData["Lead organisations"] = leadOrgIds.map((id) => ({ Id: id }));
   }
@@ -266,42 +495,60 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
     caseData["Involved organisations"] = involvedOrgIds.map((id) => ({ Id: id }));
   }
 
-  // Create Case in NocoDB
-  const caseCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
-    method: "POST",
-    headers: {
-      "xc-token": token,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify([caseData]),
-  });
+  let finalCaseId;
 
-  if (!caseCreateRes.ok) {
-    const errText = await caseCreateRes.text();
-    // Measure 3.C: Mask internal schema details from client
-    console.error("NocoDB Case creation error:", caseCreateRes.status, errText);
-    return jsonResponse(
-      { error: "Unable to save case submission in database. Please check your entries." },
-      502,
-      corsHeaders
-    );
+  if (isEditMode) {
+    // UPDATE existing record
+    const updateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+      method: "PATCH",
+      headers: {
+        "xc-token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([{ Id: existingCaseId, ...caseData }]),
+    });
+
+    if (!updateRes.ok) {
+      console.error("NocoDB Case update error:", updateRes.status, await updateRes.text());
+      return jsonResponse({ error: "Failed to update case record in database." }, 502, corsHeaders);
+    }
+    finalCaseId = existingCaseId;
+  } else {
+    // CREATE new record
+    const caseCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+      method: "POST",
+      headers: {
+        "xc-token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([caseData]),
+    });
+
+    if (!caseCreateRes.ok) {
+      console.error("NocoDB Case creation error:", caseCreateRes.status, await caseCreateRes.text());
+      return jsonResponse(
+        { error: "Unable to save case submission in database. Please check your entries." },
+        502,
+        corsHeaders
+      );
+    }
+
+    const createdRecords = await caseCreateRes.json();
+    const createdCase = Array.isArray(createdRecords) ? createdRecords[0] : createdRecords;
+    finalCaseId = createdCase.Id || createdCase.id;
   }
 
-  const createdCaseRecords = await caseCreateRes.json();
-  const createdCase = Array.isArray(createdCaseRecords) ? createdCaseRecords[0] : createdCaseRecords;
-  const caseId = createdCase.Id || createdCase.id;
+  // Link organisations
+  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, baseUrl, token);
+  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, finalCaseId, fundingOrgIds, baseUrl, token);
+  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, baseUrl, token);
 
-  // Step 3: Link organisations explicitly to guarantee M:M relations
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, caseId, leadOrgIds, baseUrl, token);
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, caseId, fundingOrgIds, baseUrl, token);
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, caseId, involvedOrgIds, baseUrl, token);
-
-  // Step 4: Create Participant records (clamped to MAX_PARTICIPANTS)
+  // Sync Participant records
   const rawParticipants = clampArray(payload.participants, MAX_PARTICIPANTS);
   const participantIds = [];
 
-  if (rawParticipants.length > 0) {
-    const participantRecords = rawParticipants.map((p) => ({
+  for (const p of rawParticipants) {
+    const pFields = {
       "Group description": sanitizeString(p.groupDescription, 250) || "Participant Group",
       "How many people took part?": clampNumber(p.participantCount, 0, 10000000),
       "On average, how many hours did each participant engage for?": clampNumber(p.engagementHours, 0, 10000),
@@ -313,76 +560,104 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
       "Which of the following methods were used to engage participants?": sanitizeStringArray(p.engagementMethods, 20),
       "Do any of the following apply?": sanitizeStringArray(p.learningFacilitationOptions, 5),
       "Additional notes": sanitizeString(p.notes, 3000) || null,
-      "Cases": [{ Id: caseId }],
-    }));
+    };
 
-    const partCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
-      method: "POST",
-      headers: {
-        "xc-token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(participantRecords),
-    });
-
-    if (partCreateRes.ok) {
-      const createdParts = await partCreateRes.json();
-      const list = Array.isArray(createdParts) ? createdParts : [createdParts];
-      list.forEach((rec) => participantIds.push(rec.Id || rec.id));
-
-      await linkRecordsInTable(
-        TABLES.CASES,
-        LINK_FIELDS.CASE_PARTICIPANTS,
-        caseId,
-        participantIds,
-        baseUrl,
-        token
-      );
+    if (p.id) {
+      // Update existing participant
+      await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
+        method: "PATCH",
+        headers: { "xc-token": token, "Content-Type": "application/json" },
+        body: JSON.stringify([{ Id: p.id, ...pFields }]),
+      });
+      participantIds.push(p.id);
     } else {
-      console.error("Failed to create participants:", await partCreateRes.text());
+      // Create new participant linked to this case
+      pFields["Cases"] = [{ Id: finalCaseId }];
+      const partCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
+        method: "POST",
+        headers: { "xc-token": token, "Content-Type": "application/json" },
+        body: JSON.stringify([pFields]),
+      });
+      if (partCreateRes.ok) {
+        const createdParts = await partCreateRes.json();
+        const rec = Array.isArray(createdParts) ? createdParts[0] : createdParts;
+        participantIds.push(rec.Id || rec.id);
+      }
     }
   }
 
-  // Step 5: Create Supporting Resources (clamped to MAX_RESOURCES, URLs verified)
+  if (participantIds.length > 0) {
+    await linkRecordsInTable(
+      TABLES.CASES,
+      LINK_FIELDS.CASE_PARTICIPANTS,
+      finalCaseId,
+      participantIds,
+      baseUrl,
+      token
+    );
+  }
+
+  // Sync Supporting Resources
   const rawResources = clampArray(payload.resources, MAX_RESOURCES);
-  if (rawResources.length > 0) {
-    const validResourceRecords = [];
+  const resourceIds = [];
 
-    for (const r of rawResources) {
-      const title = sanitizeString(r.title, 250);
-      const resUrl = sanitizeString(r.url, 500);
+  for (const r of rawResources) {
+    const title = sanitizeString(r.title, 250);
+    const resUrl = sanitizeString(r.url, 500);
 
-      // Validate URL before writing
-      if (title && resUrl && isValidHttpUrl(resUrl)) {
-        validResourceRecords.push({
-          "Title": title,
-          "URL": resUrl,
-          "Select": sanitizeString(r.resourceType, 100) || "Other",
-          "Short description": sanitizeString(r.description, 1000) || null,
-          "License": sanitizeString(r.license, 100) || null,
-          "Cases": [{ Id: caseId }],
+    if (title && resUrl && isValidHttpUrl(resUrl)) {
+      const rFields = {
+        "Title": title,
+        "URL": resUrl,
+        "Select": sanitizeString(r.resourceType, 100) || "Other",
+        "Short description": sanitizeString(r.description, 1000) || null,
+        "License": sanitizeString(r.license, 100) || null,
+      };
+
+      if (r.id) {
+        // Update existing resource
+        await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
+          method: "PATCH",
+          headers: { "xc-token": token, "Content-Type": "application/json" },
+          body: JSON.stringify([{ Id: r.id, ...rFields }]),
         });
+        resourceIds.push(r.id);
+      } else {
+        // Create new resource linked to this case
+        rFields["Cases"] = [{ Id: finalCaseId }];
+        const resCreate = await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
+          method: "POST",
+          headers: { "xc-token": token, "Content-Type": "application/json" },
+          body: JSON.stringify([rFields]),
+        });
+        if (resCreate.ok) {
+          const createdR = await resCreate.json();
+          const rec = Array.isArray(createdR) ? createdR[0] : createdR;
+          resourceIds.push(rec.Id || rec.id);
+        }
       }
     }
+  }
 
-    if (validResourceRecords.length > 0) {
-      await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
-        method: "POST",
-        headers: {
-          "xc-token": token,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(validResourceRecords),
-      });
-    }
+  if (resourceIds.length > 0) {
+    await linkRecordsInTable(
+      TABLES.CASES,
+      LINK_FIELDS.CASE_RESOURCES,
+      finalCaseId,
+      resourceIds,
+      baseUrl,
+      token
+    );
   }
 
   return jsonResponse(
     {
       success: true,
-      caseId,
-      status: isNomination ? "Nomination" : "Submission",
-      message: isNomination
+      caseId: finalCaseId,
+      mode: isEditMode ? "edit" : "create",
+      message: isEditMode
+        ? "Case record updated successfully."
+        : isNomination
         ? "Project nomination recorded successfully."
         : "Full case study entry submitted successfully.",
     },
@@ -392,8 +667,7 @@ async function handleSubmitCase(request, baseUrl, token, corsHeaders) {
 }
 
 /**
- * Resolves an array of organisation items.
- * Validates IDs or sanitizes new names. Checks for duplicate before insert.
+ * Resolves an array of organisation items
  */
 async function resolveOrganisations(orgsList, baseUrl, token) {
   if (!Array.isArray(orgsList) || orgsList.length === 0) return [];
@@ -403,7 +677,6 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
   for (const item of orgsList) {
     if (!item) continue;
 
-    // Existing numeric ID
     if (typeof item === "number" || (typeof item === "string" && !isNaN(Number(item)))) {
       finalIds.push(Number(item));
       continue;
@@ -414,7 +687,6 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
       continue;
     }
 
-    // New organisation creation
     const name = sanitizeString(item.name, 200);
     if (!name || name.length < 2) continue;
 
@@ -434,7 +706,6 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
       }
     }
 
-    // Validate website if provided
     let website = sanitizeString(item.website, 255);
     if (website && !isValidHttpUrl(website)) {
       website = null;
@@ -459,8 +730,6 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
       const created = await createRes.json();
       const rec = Array.isArray(created) ? created[0] : created;
       finalIds.push(rec.Id || rec.id);
-    } else {
-      console.error("Failed to create organisation:", await createRes.text());
     }
   }
 
@@ -471,7 +740,8 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
  * Link records helper
  */
 async function linkRecordsInTable(tableId, fieldId, parentRecordId, childIds, baseUrl, token) {
-  // NocoDB v2 API requires an array: [{ id: parentId, links: [{ id: childId }] }]
+  if (!childIds || childIds.length === 0) return;
+
   const body = [
     {
       id: parentRecordId,
@@ -497,13 +767,20 @@ async function linkRecordsInTable(tableId, fieldId, parentRecordId, childIds, ba
 }
 
 /* -------------------------------------------------------------
- * Security & Validation Sanitizers
+ * Security & Helper Utilities
  * ------------------------------------------------------------- */
 
-/**
- * Strips out characters that have special syntactic meaning in NocoDB query filters:
- * ( ) ~ , " ' \ ; < > ` and control characters
- */
+function generateSecureKey(len = 16) {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  const randomValues = new Uint8Array(len);
+  crypto.getRandomValues(randomValues);
+  for (let i = 0; i < len; i++) {
+    result += chars[randomValues[i] % chars.length];
+  }
+  return result;
+}
+
 function sanitizeSearchQuery(query) {
   if (!query || typeof query !== "string") return "";
   return query
@@ -558,13 +835,9 @@ function isValidHttpUrl(str) {
 
 function isValidEmail(email) {
   if (!email || typeof email !== "string" || email.length > 150) return false;
-  // Standard RFC 5322 compatible check
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-/**
- * CORS Headers: Unrestricted for now (*)
- */
 function getCorsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",

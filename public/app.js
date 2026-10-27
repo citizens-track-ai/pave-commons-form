@@ -1,8 +1,12 @@
 /**
  * PAVE Form Application Logic
+ * Supports new submission and editing of existing 'Completed' cases with valid EditKey
  */
 
 const state = {
+  isEditMode: false,
+  caseId: null,
+  editKey: null,
   submissionIntent: "nomination",
   leadOrganisations: [],      // Array of { id, name } OR { name, isNew: true, website?: string }
   fundingOrganisations: [],
@@ -17,10 +21,121 @@ document.addEventListener("DOMContentLoaded", () => {
   initParticipantManager();
   initResourceManager();
   initFormSubmission();
+  checkEditMode();
 });
 
 /* -------------------------------------------------------------
- * 1. Nomination vs Full Case Toggle
+ * 1. Edit Mode Detection & Pre-population
+ * ------------------------------------------------------------- */
+async function checkEditMode() {
+  const params = new URLSearchParams(window.location.search);
+  const editKey = params.get("editKey") || params.get("editkey");
+  const caseId = params.get("id") || params.get("caseId");
+
+  if (!editKey) return;
+
+  const banner = document.getElementById("editBanner");
+  const bannerTitle = document.getElementById("editBannerTitle");
+  const bannerSubtitle = document.getElementById("editBannerSubtitle");
+
+  if (editKey.length < 12) {
+    banner.classList.remove("hidden");
+    banner.classList.add("error-banner");
+    bannerTitle.textContent = "Edit Access Denied";
+    bannerSubtitle.textContent = "The provided EditKey is invalid (must be at least 12 characters).";
+    return;
+  }
+
+  banner.classList.remove("hidden");
+  bannerTitle.textContent = "Verifying Edit Credentials...";
+  bannerSubtitle.textContent = "Fetching case details from database...";
+
+  try {
+    let url = `/api/case?editKey=${encodeURIComponent(editKey)}`;
+    if (caseId) {
+      url += `&id=${encodeURIComponent(caseId)}`;
+    }
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (!res.ok) {
+      banner.classList.add("error-banner");
+      bannerTitle.textContent = "Cannot Edit This Record";
+      bannerSubtitle.textContent = data.error || "Unable to authorize editing for this record.";
+      return;
+    }
+
+    const c = data.case;
+    state.isEditMode = true;
+    state.caseId = c.id;
+    state.editKey = c.editKey;
+
+    // Set hidden inputs
+    document.getElementById("caseId").value = c.id;
+    document.getElementById("editKey").value = c.editKey;
+
+    // Populate basic fields
+    document.getElementById("submitterName").value = c.submitterName || "";
+    document.getElementById("submitterEmail").value = c.submitterEmail || "";
+    setCheckedValues("submitterRoles", c.submitterRoles);
+    document.getElementById("additionalAcknowledgements").value = c.additionalAcknowledgements || "";
+
+    document.getElementById("projectTitle").value = c.projectTitle || "";
+    document.getElementById("projectUrl").value = c.projectUrl || "";
+    document.getElementById("projectDescription").value = c.projectDescription || "";
+    document.getElementById("importanceReason").value = c.importanceReason || "";
+    setCheckedValues("initiatedMethods", c.initiatedMethods);
+    document.getElementById("startYear").value = c.startYear || "";
+    document.getElementById("projectStatus").value = c.projectStatus || "";
+    document.getElementById("endYear").value = c.endYear || "";
+
+    // Full case fields
+    setCheckedValues("aiForms", c.aiForms);
+    document.getElementById("subjectMatter").value = c.subjectMatter || "";
+    setCheckedValues("projectGoals", c.projectGoals);
+    document.getElementById("inclusionEfforts").value = c.inclusionEfforts || "";
+    document.getElementById("limitations").value = c.limitations || "";
+    document.getElementById("headlineFindings").value = c.headlineFindings || "";
+    setCheckedValues("aiAssistance", c.aiAssistance);
+    setCheckedValues("publishedResources", c.publishedResources);
+    setCheckedValues("photosAvailable", c.photosAvailable);
+
+    // Prepopulate organisations
+    state.leadOrganisations = c.leadOrganisations || [];
+    state.fundingOrganisations = c.fundingOrganisations || [];
+    state.involvedOrganisations = c.involvedOrganisations || [];
+    renderSelectedTags(document.getElementById("leadOrgsPicker_tags"), "leadOrganisations");
+    renderSelectedTags(document.getElementById("fundingOrgsPicker_tags"), "fundingOrganisations");
+    renderSelectedTags(document.getElementById("involvedOrgsPicker_tags"), "involvedOrganisations");
+
+    // Prepopulate participants
+    state.participants = c.participants || [];
+    renderParticipantsList(document.getElementById("participantsList"));
+
+    // Prepopulate resources
+    state.resources = c.resources || [];
+    renderResourcesList(document.getElementById("resourcesList"));
+
+    // Switch intent to Full Case and reveal sections
+    const fullRadio = document.querySelector('input[name="submissionIntent"][value="full"]');
+    if (fullRadio) fullRadio.checked = true;
+    state.submissionIntent = "full";
+    document.getElementById("fullCaseSection").classList.remove("hidden");
+
+    // Update banner and submit button
+    bannerTitle.textContent = `Editing Case #${c.id}: "${c.projectTitle}"`;
+    bannerSubtitle.textContent = `Status: ${c.workflowStatus}. Submitting will update the existing database record.`;
+    document.getElementById("submitBtn").textContent = "Save Changes";
+  } catch (err) {
+    banner.classList.add("error-banner");
+    bannerTitle.textContent = "Error Loading Record";
+    bannerSubtitle.textContent = err.message;
+  }
+}
+
+/* -------------------------------------------------------------
+ * 2. Nomination vs Full Case Toggle
  * ------------------------------------------------------------- */
 function initIntentToggle() {
   const radios = document.querySelectorAll('input[name="submissionIntent"]');
@@ -39,7 +154,7 @@ function initIntentToggle() {
 }
 
 /* -------------------------------------------------------------
- * 2. Organisation Pickers (Search + Add If Not Found)
+ * 3. Organisation Pickers (Search + Add If Not Found)
  * ------------------------------------------------------------- */
 function initOrgPickers() {
   setupOrgPicker("leadOrgsPicker", "leadOrganisations");
@@ -69,7 +184,6 @@ function setupOrgPicker(containerId, stateKey) {
     clearTimeout(debounceTimer);
     const query = e.target.value.trim();
 
-    // Measure 1.C: Require at least 2 characters before querying backend
     if (query.length < 2) {
       dropdownEl.innerHTML = "";
       dropdownEl.classList.add("hidden");
@@ -87,7 +201,6 @@ function setupOrgPicker(containerId, stateKey) {
         const hasExactMatch = data.hasExactMatch || false;
 
         renderDropdownResults(dropdownEl, query, results, hasExactMatch, (selectedItem) => {
-          // Check if already selected
           const alreadyAdded = state[stateKey].some(
             (o) => (o.id && o.id === selectedItem.id) || o.name.toLowerCase() === selectedItem.name.toLowerCase()
           );
@@ -127,7 +240,6 @@ function renderDropdownResults(dropdownEl, query, results, hasExactMatch, onSele
     });
   }
 
-  // If no exact match, allow adding
   if (!hasExactMatch) {
     const addNewEl = document.createElement("div");
     addNewEl.className = "dropdown-item add-new";
@@ -142,6 +254,7 @@ function renderDropdownResults(dropdownEl, query, results, hasExactMatch, onSele
 }
 
 function renderSelectedTags(tagsEl, stateKey) {
+  if (!tagsEl) return;
   tagsEl.innerHTML = "";
   state[stateKey].forEach((org, index) => {
     const tag = document.createElement("span");
@@ -159,7 +272,7 @@ function renderSelectedTags(tagsEl, stateKey) {
 }
 
 /* -------------------------------------------------------------
- * 3. Participant Groups Repeater Manager
+ * 4. Participant Groups Repeater Manager
  * ------------------------------------------------------------- */
 function initParticipantManager() {
   const listEl = document.getElementById("participantsList");
@@ -218,6 +331,7 @@ function initParticipantManager() {
 }
 
 function renderParticipantsList(listEl) {
+  if (!listEl) return;
   listEl.innerHTML = "";
   if (state.participants.length === 0) {
     listEl.innerHTML = `<p class="empty-note">No participant groups added yet.</p>`;
@@ -248,7 +362,7 @@ function renderParticipantsList(listEl) {
 }
 
 /* -------------------------------------------------------------
- * 4. Resources Repeater Manager
+ * 5. Resources Repeater Manager
  * ------------------------------------------------------------- */
 function initResourceManager() {
   const listEl = document.getElementById("resourcesList");
@@ -296,6 +410,7 @@ function initResourceManager() {
 }
 
 function renderResourcesList(listEl) {
+  if (!listEl) return;
   listEl.innerHTML = "";
   if (state.resources.length === 0) {
     listEl.innerHTML = `<p class="empty-note">No resources added yet.</p>`;
@@ -321,7 +436,7 @@ function renderResourcesList(listEl) {
 }
 
 /* -------------------------------------------------------------
- * 5. Form Submission
+ * 6. Form Submission (Create or Edit)
  * ------------------------------------------------------------- */
 function initFormSubmission() {
   const form = document.getElementById("caseForm");
@@ -351,12 +466,15 @@ function initFormSubmission() {
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = "Submitting...";
+    submitBtn.textContent = state.isEditMode ? "Saving Changes..." : "Submitting...";
     statusEl.className = "status-msg";
-    statusEl.textContent = "Sending your case submission to NocoDB...";
+    statusEl.textContent = state.isEditMode ? "Updating case record in NocoDB..." : "Sending your case submission to NocoDB...";
     statusEl.classList.remove("hidden");
 
     const payload = {
+      caseId: state.caseId,
+      editKey: state.editKey,
+
       // Submitter
       submitterName: document.getElementById("submitterName").value.trim(),
       submitterEmail: email,
@@ -406,27 +524,30 @@ function initFormSubmission() {
 
       statusEl.className = "status-msg success";
       statusEl.innerHTML = `
-        <h3>Thank You!</h3>
+        <h3>${state.isEditMode ? "Changes Saved!" : "Thank You!"}</h3>
         <p>${escapeHtml(result.message || "Your submission was successfully recorded.")}</p>
         <p><small>Reference Case Record ID: #${escapeHtml(result.caseId)}</small></p>
       `;
 
-      form.reset();
-      state.leadOrganisations = [];
-      state.fundingOrganisations = [];
-      state.involvedOrganisations = [];
-      state.participants = [];
-      state.resources = [];
-      renderParticipantsList(document.getElementById("participantsList"));
-      renderResourcesList(document.getElementById("resourcesList"));
-      document.querySelectorAll(".selected-tags").forEach((el) => (el.innerHTML = ""));
+      if (!state.isEditMode) {
+        form.reset();
+        state.leadOrganisations = [];
+        state.fundingOrganisations = [];
+        state.involvedOrganisations = [];
+        state.participants = [];
+        state.resources = [];
+        renderParticipantsList(document.getElementById("participantsList"));
+        renderResourcesList(document.getElementById("resourcesList"));
+        document.querySelectorAll(".selected-tags").forEach((el) => (el.innerHTML = ""));
+      }
+
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       statusEl.className = "status-msg error";
       statusEl.textContent = `Error: ${err.message}`;
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = "Submit Case Entry";
+      submitBtn.textContent = state.isEditMode ? "Save Changes" : "Submit Case Entry";
     }
   });
 }
@@ -437,6 +558,14 @@ function initFormSubmission() {
 function getCheckedValues(name) {
   const checked = document.querySelectorAll(`input[name="${name}"]:checked`);
   return Array.from(checked).map((el) => el.value);
+}
+
+function setCheckedValues(name, values) {
+  if (!Array.isArray(values)) return;
+  const checkboxes = document.querySelectorAll(`input[name="${name}"]`);
+  checkboxes.forEach((cb) => {
+    cb.checked = values.includes(cb.value);
+  });
 }
 
 function isValidClientUrl(str) {

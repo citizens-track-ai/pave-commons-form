@@ -338,9 +338,59 @@ dialog::backdrop {
   color: #991b1b;
 }
 
+/* Edit Mode Banner */
+.edit-banner {
+  background-color: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.edit-banner-content strong {
+  display: block;
+  font-size: 1.05rem;
+  color: #1e3a8a;
+  margin: 0.25rem 0;
+}
+
+.edit-banner-content p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #3b82f6;
+}
+
+.badge {
+  display: inline-block;
+  background-color: #2563eb;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.btn-cancel-edit {
+  font-size: 0.85rem;
+  color: #4b5563;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.btn-cancel-edit:hover {
+  color: #111827;
+}
+
 @media (max-width: 600px) {
-  .form-row {
+  .edit-banner {
     flex-direction: column;
-    gap: 0;
+    align-items: flex-start;
   }
 }
+

@@ -13,7 +13,20 @@
       <p class="subtitle">Contribute to the casebook documenting public engagement on AI.</p>
     </header>
 
+    <!-- Edit Mode Banner -->
+    <div id="editBanner" class="edit-banner hidden">
+      <div class="edit-banner-content">
+        <span class="badge">Edit Mode</span>
+        <strong id="editBannerTitle">Editing Case</strong>
+        <p id="editBannerSubtitle">You are modifying an existing case entry. Submitting will update the database record.</p>
+      </div>
+      <a href="/" class="btn-cancel-edit">Switch to New Submission</a>
+    </div>
+
     <form id="caseForm">
+      <input type="hidden" id="caseId" name="caseId">
+      <input type="hidden" id="editKey" name="editKey">
+
       <!-- Section 1: Submitter Info -->
       <fieldset>
         <legend>1. About You</legend>
