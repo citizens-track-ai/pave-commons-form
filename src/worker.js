@@ -19,6 +19,14 @@ const TABLES = {
   RESOURCES: "mm1j25f6w0s1hsn",
 };
 
+const LINK_FIELDS = {
+  CASE_LEAD_ORGS: "cfsr6shftjp5rh8",
+  CASE_FUNDING_ORGS: "ctry6dyg5238w16",
+  CASE_INVOLVED_ORGS: "crlcp2kthfjwijy",
+  CASE_PARTICIPANTS: "clfmrd6qe6r4l6w",
+  CASE_RESOURCES: "c3ph7cav2ieep3q",
+};
+
 const MAX_PAYLOAD_BYTES = 100 * 1024; // 100 KB limit
 const MAX_PARTICIPANTS = 15;
 const MAX_RESOURCES = 20;
@@ -387,6 +395,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
 
   const isEditMode = Boolean(payload.caseId && payload.editKey);
   let existingCaseId = null;
+  let existingRec = null;
 
   // If in edit mode, strictly verify authorization conditions
   if (isEditMode) {
@@ -409,7 +418,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       return jsonResponse({ error: "Existing case record not found." }, 404, corsHeaders);
     }
 
-    const existingRec = await checkRes.json();
+    existingRec = await checkRes.json();
     const status = (existingRec["Workflow: Status"] || "").trim().toLowerCase();
     const storedKey = (existingRec["EditKey"] || "").trim();
 
@@ -431,6 +440,13 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
 
     existingCaseId = caseId;
   }
+
+  // Extract current relationship link IDs if editing
+  const currentLeadOrgIds = extractIds(existingRec?.["Lead organisations"]);
+  const currentFundingOrgIds = extractIds(existingRec?.["Funding Organisations"]);
+  const currentInvolvedOrgIds = extractIds(existingRec?.["Involved organisations"]);
+  const currentPartIds = extractIds(existingRec?.["Participants"]);
+  const currentResIds = extractIds(existingRec?.["Supporting resources"]);
 
   // Validate required Project Title
   const projectTitle = sanitizeString(payload.projectTitle, 250);
@@ -507,11 +523,6 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     caseData["EditKey"] = generateSecureKey(16);
   }
 
-  // Assign organisation links directly in case payload using bare primary keys [1, 2]
-  caseData["Lead organisations"] = leadOrgIds;
-  caseData["Funding Organisations"] = fundingOrgIds;
-  caseData["Involved organisations"] = involvedOrgIds;
-
   let finalCaseId;
 
   if (isEditMode) {
@@ -581,10 +592,9 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         headers: { "xc-token": token, "Content-Type": "application/json" },
         body: JSON.stringify([{ Id: p.id, ...pFields }]),
       });
-      participantIds.push(p.id);
+      participantIds.push(Number(p.id));
     } else {
-      // Create new participant linked to this case
-      pFields["Cases"] = [{ Id: finalCaseId }];
+      // Create new participant record
       const partCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
         method: "POST",
         headers: { "xc-token": token, "Content-Type": "application/json" },
@@ -593,9 +603,20 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       if (partCreateRes.ok) {
         const createdParts = await partCreateRes.json();
         const rec = Array.isArray(createdParts) ? createdParts[0] : createdParts;
-        participantIds.push(rec.Id || rec.id);
+        const newId = rec.Id || rec.id;
+        if (newId) participantIds.push(Number(newId));
       }
     }
+  }
+
+  // Clean up removed participants if in edit mode
+  const removedPartIds = currentPartIds.filter((id) => !participantIds.includes(id));
+  if (removedPartIds.length > 0) {
+    await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
+      method: "DELETE",
+      headers: { "xc-token": token, "Content-Type": "application/json" },
+      body: JSON.stringify(removedPartIds.map((id) => ({ Id: id }))),
+    });
   }
 
   // Sync Supporting Resources
@@ -622,10 +643,9 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
           headers: { "xc-token": token, "Content-Type": "application/json" },
           body: JSON.stringify([{ Id: r.id, ...rFields }]),
         });
-        resourceIds.push(r.id);
+        resourceIds.push(Number(r.id));
       } else {
-        // Create new resource linked to this case
-        rFields["Cases"] = [{ Id: finalCaseId }];
+        // Create new resource
         const resCreate = await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
           method: "POST",
           headers: { "xc-token": token, "Content-Type": "application/json" },
@@ -634,33 +654,31 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         if (resCreate.ok) {
           const createdR = await resCreate.json();
           const rec = Array.isArray(createdR) ? createdR[0] : createdR;
-          resourceIds.push(rec.Id || rec.id);
+          const newId = rec.Id || rec.id;
+          if (newId) resourceIds.push(Number(newId));
         }
       }
     }
   }
 
-  // Link all relation fields directly on the Case record in NocoDB v2 using bare primary keys
-  const caseLinksUpdate = {
-    Id: finalCaseId,
-    "Lead organisations": leadOrgIds,
-    "Funding Organisations": fundingOrgIds,
-    "Involved organisations": involvedOrgIds,
-    "Participants": participantIds,
-    "Supporting resources": resourceIds,
-  };
-
-  const patchLinksRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
-    method: "PATCH",
-    headers: {
-      "xc-token": token,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify([caseLinksUpdate]),
-  });
-  if (!patchLinksRes.ok) {
-    console.warn("Failed to patch Case child links:", patchLinksRes.status, await patchLinksRes.text());
+  // Clean up removed resources if in edit mode
+  const removedResIds = currentResIds.filter((id) => !resourceIds.includes(id));
+  if (removedResIds.length > 0) {
+    await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
+      method: "DELETE",
+      headers: { "xc-token": token, "Content-Type": "application/json" },
+      body: JSON.stringify(removedResIds.map((id) => ({ Id: id }))),
+    });
   }
+
+  // Sync all relationship links using NocoDB's dedicated link endpoints
+  await Promise.all([
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, currentLeadOrgIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, finalCaseId, fundingOrgIds, currentFundingOrgIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, currentInvolvedOrgIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_PARTICIPANTS, finalCaseId, participantIds, currentPartIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_RESOURCES, finalCaseId, resourceIds, currentResIds, baseUrl, token),
+  ]);
 
   return jsonResponse(
     {
@@ -855,4 +873,61 @@ function ensureArray(val) {
   }
   return [String(val)];
 }
+
+function extractIds(arr) {
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .map((o) => (typeof o === "object" && o !== null ? (o.Id || o.id || (o.id_fields && o.id_fields.Id)) : o))
+    .filter((id) => id !== null && id !== undefined && !isNaN(Number(id)))
+    .map(Number);
+}
+
+/**
+ * Syncs many-to-many relationship links using NocoDB's dedicated /links/ endpoint.
+ * Adds newly linked records and removes unlinked records.
+ */
+async function syncTableLinks(tableId, fieldId, recordId, desiredIds, currentIds, baseUrl, token) {
+  const currentSet = new Set((currentIds || []).map(Number));
+  const desiredSet = new Set((desiredIds || []).map(Number));
+
+  const toAdd = [...desiredSet].filter((id) => !currentSet.has(id));
+  const toRemove = [...currentSet].filter((id) => !desiredSet.has(id));
+
+  if (toAdd.length > 0) {
+    try {
+      const addRes = await fetch(`${baseUrl}/api/v2/tables/${tableId}/links/${fieldId}/records/${recordId}`, {
+        method: "POST",
+        headers: {
+          "xc-token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(toAdd.map((id) => ({ Id: id }))),
+      });
+      if (!addRes.ok) {
+        console.warn(`Failed to add links on table ${tableId}, field ${fieldId}:`, addRes.status, await addRes.text());
+      }
+    } catch (err) {
+      console.warn(`Exception adding links on table ${tableId}, field ${fieldId}:`, err);
+    }
+  }
+
+  if (toRemove.length > 0) {
+    try {
+      const delRes = await fetch(`${baseUrl}/api/v2/tables/${tableId}/links/${fieldId}/records/${recordId}`, {
+        method: "DELETE",
+        headers: {
+          "xc-token": token,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(toRemove.map((id) => ({ Id: id }))),
+      });
+      if (!delRes.ok) {
+        console.warn(`Failed to remove links on table ${tableId}, field ${fieldId}:`, delRes.status, await delRes.text());
+      }
+    } catch (err) {
+      console.warn(`Exception removing links on table ${tableId}, field ${fieldId}:`, err);
+    }
+  }
+}
+
 
