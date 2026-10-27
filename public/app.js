@@ -861,9 +861,9 @@ function initFormSubmission() {
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = state.isEditMode ? "Saving Changes..." : "Submitting...";
+    submitBtn.textContent = state.isEditMode ? "Saving Changes..." : "Saving your submission...";
     statusEl.className = "status-msg";
-    statusEl.textContent = state.isEditMode ? "Updating case record in NocoDB..." : "Sending your case submission to NocoDB...";
+    statusEl.textContent = state.isEditMode ? "Saving your changes..." : "Saving your submission...";
     statusEl.classList.remove("hidden");
 
     try {
@@ -920,28 +920,76 @@ function initFormSubmission() {
         throw new Error(result.error || "Submission could not be completed.");
       }
 
-      statusEl.className = "status-msg success";
-      statusEl.innerHTML = `
-        <h3>${state.isEditMode ? "Changes Saved!" : "Thank You!"}</h3>
-        <p>${escapeHtml(result.message || "Your submission was successfully recorded.")}</p>
-        <p><small>Reference Case Record ID: #${escapeHtml(result.caseId)}</small></p>
-      `;
+      if (state.isEditMode) {
+        // Edit mode: show confirmation above the form
+        statusEl.className = "status-msg success";
+        statusEl.innerHTML = `
+          <h3>Changes Saved!</h3>
+          <p>${escapeHtml(result.message || "Your case record was updated successfully.")}</p>
+          <p><small>You can make further edits anytime using your edit link until the submission is published.</small></p>
+        `;
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        // New entry created: hide the form and show the dedicated success screen with edit link
+        form.classList.add("hidden");
+        const editBanner = document.getElementById("editBanner");
+        if (editBanner) editBanner.classList.add("hidden");
 
-      if (!state.isEditMode) {
-        form.reset();
-        state.leadOrganisations = [];
-        state.fundingOrganisations = [];
-        state.involvedOrganisations = [];
-        state.participants = [];
-        state.resources = [];
-        renderParticipantsList(document.getElementById("participantsList"));
-        renderResourcesList(document.getElementById("resourcesList"));
-        document.querySelectorAll(".selected-tags").forEach((el) => (el.innerHTML = ""));
-        renderStageTabs();
-        goToStage("stage-1");
+        const editKey = result.editKey || state.editKey || "";
+        const editUrl = `${window.location.origin}${window.location.pathname}?id=${encodeURIComponent(result.caseId)}&editKey=${encodeURIComponent(editKey)}`;
+
+        const successScreen = document.getElementById("submissionSuccessScreen");
+        if (successScreen) {
+          successScreen.innerHTML = `
+            <h2>Thank You for Your Submission!</h2>
+            <p>Your project entry (<strong>#${escapeHtml(result.caseId)}: ${escapeHtml(payload.projectTitle)}</strong>) has been saved.</p>
+            
+            <div class="edit-link-container">
+              <label for="editUrlField">Your Edit Link</label>
+              <p style="margin-top: 0; font-size: 0.9rem; color: #166534;">
+                You can save this link to make edits to your submission in future at any time until it is published.
+              </p>
+              <div class="edit-link-box">
+                <input type="text" id="editUrlField" class="edit-link-input" value="${escapeHtml(editUrl)}" readonly>
+                <button type="button" id="copyEditLinkBtn" class="btn-copy-link">Copy Link</button>
+              </div>
+            </div>
+
+            <div class="success-actions">
+              <a href="${escapeHtml(editUrl)}" class="btn-primary" style="display: inline-block; text-decoration: none;">View / Edit Your Submission</a>
+              <a href="/" class="btn-secondary" style="display: inline-block; text-decoration: none;">Submit Another Project</a>
+            </div>
+          `;
+          successScreen.classList.remove("hidden");
+
+          const copyBtn = document.getElementById("copyEditLinkBtn");
+          const inputField = document.getElementById("editUrlField");
+          if (copyBtn && inputField) {
+            copyBtn.addEventListener("click", async () => {
+              try {
+                inputField.select();
+                await navigator.clipboard.writeText(editUrl);
+                copyBtn.textContent = "✓ Copied!";
+                copyBtn.classList.add("copied");
+                setTimeout(() => {
+                  copyBtn.textContent = "Copy Link";
+                  copyBtn.classList.remove("copied");
+                }, 3000);
+              } catch (_) {
+                inputField.focus();
+                inputField.select();
+                document.execCommand("copy");
+                copyBtn.textContent = "✓ Copied!";
+                setTimeout(() => {
+                  copyBtn.textContent = "Copy Link";
+                }, 3000);
+              }
+            });
+          }
+        }
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }
-
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       statusEl.className = "status-msg error";
       statusEl.textContent = `Error: ${err.message}`;

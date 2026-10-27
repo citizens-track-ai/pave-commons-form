@@ -517,10 +517,12 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     "Photos available?": sanitizeStringArray(payload.photosAvailable, 5),
   };
 
-  // Only assign workflow status on initial creation (preserve 'Completed' on edits)
+  // Only assign workflow status and editKey on initial creation (preserve 'Completed' on edits)
+  let generatedEditKey = null;
   if (!isEditMode) {
     caseData["Workflow: Status"] = isNomination ? "Nomination" : "Submission";
-    caseData["EditKey"] = generateSecureKey(16);
+    generatedEditKey = generateSecureKey(16);
+    caseData["EditKey"] = generatedEditKey;
   }
 
   let finalCaseId;
@@ -666,6 +668,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     {
       success: true,
       caseId: finalCaseId,
+      editKey: isEditMode ? payload.editKey : generatedEditKey,
       mode: isEditMode ? "edit" : "create",
       message: isEditMode
         ? "Case record updated successfully."
