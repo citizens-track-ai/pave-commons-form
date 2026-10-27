@@ -29,10 +29,10 @@ body {
 }
 
 .container {
-  max-width: 760px;
+  max-width: 1080px;
   margin: 0 auto;
   background-color: var(--container-bg);
-  padding: 2rem;
+  padding: 2rem 2.5rem;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -508,33 +508,35 @@ dialog::backdrop {
 }
 
 .form-tabs-nav {
+  width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
 }
 
 .form-tabs-list {
   display: flex;
-  gap: 0.45rem;
-  align-items: center;
-  padding-bottom: 0.25rem;
-  min-width: min-content;
+  gap: 0.35rem;
+  align-items: stretch;
+  width: 100%;
 }
 
 .stage-tab-btn {
+  flex: 1 1 0;
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.75rem;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.35rem;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
   background-color: #f9fafb;
   color: #4b5563;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
+  min-width: 0;
 }
 
 .stage-tab-btn:hover {

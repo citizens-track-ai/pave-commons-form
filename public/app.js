@@ -18,14 +18,14 @@ const state = {
 };
 
 const STAGES_CONFIG = [
-  { id: "stage-1", label: "1. About You", isFullOnly: false },
-  { id: "stage-2", label: "2. Project Details", isFullOnly: false },
-  { id: "stage-3", label: "3. Organisations", isFullOnly: true },
-  { id: "stage-4", label: "4. Focus of Engagement", isFullOnly: true },
-  { id: "stage-5", label: "5. Participants", isFullOnly: true },
-  { id: "stage-6", label: "6. Headline Findings", isFullOnly: true },
-  { id: "stage-7", label: "7. Supporting Resources", isFullOnly: true },
-  { id: "stage-8", label: "8. Consent & Submit", isFullOnly: false },
+  { id: "stage-1", label: "About You", isFullOnly: false },
+  { id: "stage-2", label: "Project Details", isFullOnly: false },
+  { id: "stage-3", label: "Organisations", isFullOnly: true },
+  { id: "stage-4", label: "Focus", isFullOnly: true },
+  { id: "stage-5", label: "Participants", isFullOnly: true },
+  { id: "stage-6", label: "Findings", isFullOnly: true },
+  { id: "stage-7", label: "Resources", isFullOnly: true },
+  { id: "stage-8", label: "Review & Submit", isFullOnly: false },
 ];
 
 function getActiveStages() {
