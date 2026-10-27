@@ -19,16 +19,6 @@ const TABLES = {
   RESOURCES: "mm1j25f6w0s1hsn",
 };
 
-const LINK_FIELDS = {
-  CASE_LEAD_ORGS: "cfsr6shftjp5rh8",
-  CASE_FUNDING_ORGS: "ctry6dyg5238w16",
-  CASE_INVOLVED_ORGS: "crlcp2kthfjwijy",
-  CASE_PARTICIPANTS: "clfmrd6qe6r4l6w",
-  CASE_RESOURCES: "c3ph7cav2ieep3q",
-  PARTICIPANT_CASE: "cl440n84ovf0nxu",
-  RESOURCE_CASE: "cd7i3ulk36wvuhg",
-};
-
 const MAX_PAYLOAD_BYTES = 100 * 1024; // 100 KB limit
 const MAX_PARTICIPANTS = 15;
 const MAX_RESOURCES = 20;
@@ -41,6 +31,10 @@ export default {
 
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    if (url.pathname === "/favicon.ico") {
+      return new Response(null, { status: 204 });
     }
 
     const nocodbBaseUrl = env.NOCODB_BASE_URL || NOCODB_DEFAULT_BASE_URL;
@@ -485,15 +479,10 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     caseData["EditKey"] = generateSecureKey(16);
   }
 
-  if (leadOrgIds.length > 0) {
-    caseData["Lead organisations"] = leadOrgIds.map((id) => ({ Id: id }));
-  }
-  if (fundingOrgIds.length > 0) {
-    caseData["Funding Organisations"] = fundingOrgIds.map((id) => ({ Id: id }));
-  }
-  if (involvedOrgIds.length > 0) {
-    caseData["Involved organisations"] = involvedOrgIds.map((id) => ({ Id: id }));
-  }
+  // Assign organisation links directly in case payload
+  caseData["Lead organisations"] = leadOrgIds.map((id) => ({ Id: id }));
+  caseData["Funding Organisations"] = fundingOrgIds.map((id) => ({ Id: id }));
+  caseData["Involved organisations"] = involvedOrgIds.map((id) => ({ Id: id }));
 
   let finalCaseId;
 
@@ -538,11 +527,6 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     finalCaseId = createdCase.Id || createdCase.id;
   }
 
-  // Link organisations
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, baseUrl, token);
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, finalCaseId, fundingOrgIds, baseUrl, token);
-  await linkRecordsInTable(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, baseUrl, token);
-
   // Sync Participant records
   const rawParticipants = clampArray(payload.participants, MAX_PARTICIPANTS);
   const participantIds = [];
@@ -584,17 +568,6 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         participantIds.push(rec.Id || rec.id);
       }
     }
-  }
-
-  if (participantIds.length > 0) {
-    await linkRecordsInTable(
-      TABLES.CASES,
-      LINK_FIELDS.CASE_PARTICIPANTS,
-      finalCaseId,
-      participantIds,
-      baseUrl,
-      token
-    );
   }
 
   // Sync Supporting Resources
@@ -639,15 +612,27 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     }
   }
 
-  if (resourceIds.length > 0) {
-    await linkRecordsInTable(
-      TABLES.CASES,
-      LINK_FIELDS.CASE_RESOURCES,
-      finalCaseId,
-      resourceIds,
-      baseUrl,
-      token
-    );
+  // Link participants and resources directly on the Case record in NocoDB v2
+  const caseLinksUpdate = { Id: finalCaseId };
+  if (participantIds.length > 0 || isEditMode) {
+    caseLinksUpdate["Participants"] = participantIds.map((id) => ({ Id: id }));
+  }
+  if (resourceIds.length > 0 || isEditMode) {
+    caseLinksUpdate["Supporting resources"] = resourceIds.map((id) => ({ Id: id }));
+  }
+
+  if (Object.keys(caseLinksUpdate).length > 1) {
+    const patchLinksRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+      method: "PATCH",
+      headers: {
+        "xc-token": token,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([caseLinksUpdate]),
+    });
+    if (!patchLinksRes.ok) {
+      console.warn("Failed to patch Case child links:", patchLinksRes.status, await patchLinksRes.text());
+    }
   }
 
   return jsonResponse(
@@ -734,36 +719,6 @@ async function resolveOrganisations(orgsList, baseUrl, token) {
   }
 
   return [...new Set(finalIds)];
-}
-
-/**
- * Link records helper
- */
-async function linkRecordsInTable(tableId, fieldId, parentRecordId, childIds, baseUrl, token) {
-  if (!childIds || childIds.length === 0) return;
-
-  const body = [
-    {
-      id: parentRecordId,
-      links: childIds.map((id) => ({ id: Number(id) || id })),
-    },
-  ];
-
-  try {
-    const res = await fetch(`${baseUrl}/api/v2/tables/${tableId}/links/${fieldId}/records`, {
-      method: "POST",
-      headers: {
-        "xc-token": token,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      console.warn(`Link failed on table ${tableId}, field ${fieldId}:`, await res.text());
-    }
-  } catch (err) {
-    console.warn(`Link exception on table ${tableId}, field ${fieldId}:`, err);
-  }
 }
 
 /* -------------------------------------------------------------
