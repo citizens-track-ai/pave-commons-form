@@ -300,8 +300,7 @@ async function checkEditMode() {
     state.submissionIntent = "full";
     const fullRadio = document.querySelector('input[name="submissionIntent"][value="full"]');
     if (fullRadio) fullRadio.checked = true;
-    const fullStages = document.getElementById("fullCaseStages");
-    if (fullStages) fullStages.classList.remove("hidden");
+    updateFullCaseVisibility();
 
     // Set hidden inputs
     document.getElementById("caseId").value = c.id;
@@ -376,21 +375,33 @@ async function checkEditMode() {
 /* -------------------------------------------------------------
  * 2. Nomination vs Full Case Toggle
  * ------------------------------------------------------------- */
+function updateFullCaseVisibility() {
+  const isFull = state.submissionIntent === "full" || state.isEditMode;
+  const fullSection = document.getElementById("fullCaseStages");
+  if (fullSection) {
+    if (isFull) {
+      fullSection.classList.remove("hidden");
+    } else {
+      fullSection.classList.add("hidden");
+    }
+  }
+
+  document.querySelectorAll(".full-case-only").forEach((el) => {
+    if (isFull) {
+      el.classList.remove("hidden");
+    } else {
+      el.classList.add("hidden");
+    }
+  });
+}
+
 function initIntentToggle() {
   const radios = document.querySelectorAll('input[name="submissionIntent"]');
 
   radios.forEach((radio) => {
     radio.addEventListener("change", (e) => {
       state.submissionIntent = e.target.value;
-      const isFull = e.target.value === "full";
-      const fullSection = document.getElementById("fullCaseStages");
-      if (fullSection) {
-        if (isFull) {
-          fullSection.classList.remove("hidden");
-        } else {
-          fullSection.classList.add("hidden");
-        }
-      }
+      updateFullCaseVisibility();
 
       const activeStages = getActiveStages();
       if (!activeStages.some((s) => s.id === state.currentStageId)) {
@@ -401,6 +412,8 @@ function initIntentToggle() {
       renderStageTabs();
     });
   });
+
+  updateFullCaseVisibility();
 }
 
 /* -------------------------------------------------------------
