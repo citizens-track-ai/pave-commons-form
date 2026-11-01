@@ -17,6 +17,7 @@ const TABLES = {
   ORGANISATIONS: "mecsh2ykfxm0s2f",
   PARTICIPANTS: "mtys2m273atfyd9",
   RESOURCES: "mm1j25f6w0s1hsn",
+  MESSAGES: "mujfx489gv4v1co",
 };
 
 const LINK_FIELDS = {
@@ -25,12 +26,14 @@ const LINK_FIELDS = {
   CASE_INVOLVED_ORGS: "crlcp2kthfjwijy",
   CASE_PARTICIPANTS: "clfmrd6qe6r4l6w",
   CASE_RESOURCES: "c3ph7cav2ieep3q",
+  CASE_MESSAGES: "cgcjd052mayfjgo",
 };
 
 const MAX_PAYLOAD_BYTES = 100 * 1024; // 100 KB limit
 const MAX_PARTICIPANTS = 15;
 const MAX_RESOURCES = 20;
 const MAX_ORGS_PER_FIELD = 20;
+const MAX_MESSAGES = 100;
 
 export default {
   async fetch(request, env) {
@@ -295,6 +298,27 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
     }
   }
 
+  // Fetch linked messages if present
+  let messages = [];
+  const linkedMessages = caseRecord["Messages"] || [];
+  const msgIds = extractIds(linkedMessages);
+
+  if (msgIds.length > 0) {
+    const msgWhere = encodeURIComponent(`(Id,in,${msgIds.join(",")})`);
+    const messagesRes = await fetch(
+      `${baseUrl}/api/v2/tables/${TABLES.MESSAGES}/records?where=${msgWhere}&limit=100`,
+      { headers: { "xc-token": token } }
+    );
+    if (messagesRes.ok) {
+      const msgData = await messagesRes.json();
+      messages = (msgData.list || []).map((m) => ({
+        id: m.Id || m.id,
+        text: m["Name"] || "",
+        type: m["Type"] || "Recommendation",
+      }));
+    }
+  }
+
   // Fetch linked organisation names from Organisations table
   const allOrgIds = [
     ...(caseRecord["Lead organisations"] || []),
@@ -362,6 +386,7 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
         involvedOrganisations: formatOrgLink(caseRecord["Involved organisations"]),
         participants,
         resources,
+        messages,
       },
     },
     200,
@@ -447,6 +472,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
   const currentInvolvedOrgIds = extractIds(existingRec?.["Involved organisations"]);
   const currentPartIds = extractIds(existingRec?.["Participants"]);
   const currentResIds = extractIds(existingRec?.["Supporting resources"]);
+  const currentMsgIds = extractIds(existingRec?.["Messages"]);
 
   // Validate required Project Title
   const projectTitle = sanitizeString(payload.projectTitle, 250);
@@ -655,6 +681,45 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
   }
 
 
+  // Sync Messages
+  const rawMessages = clampArray(payload.messages, MAX_MESSAGES);
+  const messageIds = [];
+
+  for (const m of rawMessages) {
+    const text = sanitizeString(m.text || m.name, 10000);
+    const type = sanitizeAllowedOption(m.type, ["Action", "Recommendation", "Quote"]) || "Recommendation";
+
+    if (text) {
+      const mFields = {
+        "Name": text,
+        "Type": type,
+      };
+
+      if (m.id) {
+        // Update existing message
+        await fetch(`${baseUrl}/api/v2/tables/${TABLES.MESSAGES}/records`, {
+          method: "PATCH",
+          headers: { "xc-token": token, "Content-Type": "application/json" },
+          body: JSON.stringify([{ Id: m.id, ...mFields }]),
+        });
+        messageIds.push(Number(m.id));
+      } else {
+        // Create new message
+        const msgCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.MESSAGES}/records`, {
+          method: "POST",
+          headers: { "xc-token": token, "Content-Type": "application/json" },
+          body: JSON.stringify([mFields]),
+        });
+        if (msgCreateRes.ok) {
+          const createdMsg = await msgCreateRes.json();
+          const rec = Array.isArray(createdMsg) ? createdMsg[0] : createdMsg;
+          const newId = rec.Id || rec.id;
+          if (newId) messageIds.push(Number(newId));
+        }
+      }
+    }
+  }
+
   // Sync all relationship links using NocoDB's dedicated link endpoints
   await Promise.all([
     syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, currentLeadOrgIds, baseUrl, token),
@@ -662,6 +727,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, currentInvolvedOrgIds, baseUrl, token),
     syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_PARTICIPANTS, finalCaseId, participantIds, currentPartIds, baseUrl, token),
     syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_RESOURCES, finalCaseId, resourceIds, currentResIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_MESSAGES, finalCaseId, messageIds, currentMsgIds, baseUrl, token),
   ]);
 
   return jsonResponse(

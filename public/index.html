@@ -76,7 +76,7 @@
 
             <div class="form-group">
               <label>Your Role in the Project</label>
-              <div class="checkbox-group">
+              <div class="checkbox-group multi-col">
                 <label><input type="checkbox" name="submitterRoles" value="Project leader"> Project leader</label>
                 <label><input type="checkbox" name="submitterRoles" value="Project team"> Project team</label>
                 <label><input type="checkbox" name="submitterRoles" value="Commissioner"> Commissioner</label>
@@ -126,7 +126,7 @@
 
             <div class="form-group">
               <label>What form of AI is the project about?</label>
-              <div class="checkbox-group">
+              <div class="checkbox-group multi-col">
                 <label><input type="checkbox" name="aiForms" value="Generative AI"> Generative AI</label>
                 <label><input type="checkbox" name="aiForms" value="Predictive AI"> Predictive AI</label>
                 <label><input type="checkbox" name="aiForms" value="Specific AI system(s)"> Specific AI system(s)</label>
@@ -138,7 +138,7 @@
 
             <div class="form-group">
               <label>Project Goals</label>
-              <div class="checkbox-group">
+              <div class="checkbox-group multi-col multi-col-goals">
                 <label><input type="checkbox" name="projectGoals" value="Policy: Inform a policy-making process"> Policy: Inform a policy-making process</label>
                 <label><input type="checkbox" name="projectGoals" value="Quantitative: Generate statistical evidence on public attitudes to AI"> Quantitative: Generate statistical evidence on public attitudes to AI</label>
                 <label><input type="checkbox" name="projectGoals" value="Qualitative: Capture qualitative evidence on public attitudes to AI"> Qualitative: Capture qualitative evidence on public attitudes to AI</label>
@@ -158,7 +158,7 @@
 
             <div class="form-group">
               <label>How was the project initiated?</label>
-              <div class="checkbox-group">
+              <div class="checkbox-group multi-col">
                 <label><input type="checkbox" name="initiatedMethods" value="Commissioned"> Commissioned</label>
                 <label><input type="checkbox" name="initiatedMethods" value="Academic research"> Academic research</label>
                 <label><input type="checkbox" name="initiatedMethods" value="Community Led"> Community Led</label>
@@ -245,21 +245,46 @@
             </fieldset>
             <div class="stage-actions">
               <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-3">&larr; Back: Organisations</button>
-              <button type="button" class="btn-primary btn-next-stage" data-target="stage-5">Next: Headline Findings &rarr;</button>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-5">Next: Outputs &rarr;</button>
             </div>
           </div>
 
-          <!-- Stage 5: Headline Findings -->
+          <!-- Stage 5: Outputs -->
           <div class="form-stage hidden" id="stage-5" role="tabpanel" aria-labelledby="tab-stage-5">
             <fieldset>
-              <legend>5. What Was Said?</legend>
+              <legend>5. Outputs</legend>
 
               <div class="form-group">
                 <label for="headlineFindings">Headline Findings</label>
-                <textarea id="headlineFindings" name="headlineFindings" rows="4" placeholder="3 - 10 key messages about AI from the project report..."></textarea>
+                <textarea id="headlineFindings" name="headlineFindings" rows="3" placeholder="Summary of findings or key outputs from the project report..."></textarea>
               </div>
 
-              <div class="form-group">
+              <!-- Messages: Actions, Recommendations & Quotes -->
+              <div class="form-group messages-section">
+                <div class="messages-header">
+                  <div>
+                    <label class="messages-section-title">Messages: Actions, Recommendations &amp; Quotes</label>
+                    <p class="section-desc">Create structured outputs from this project. Use the buttons below to bulk-paste newline-separated entries, then edit inline.</p>
+                  </div>
+                  <div class="messages-btn-toolbar">
+                    <button type="button" id="addActionsBtn" class="btn-msg-action btn-add-action" data-type="Action">
+                      <span class="btn-msg-icon">+</span> Add actions
+                    </button>
+                    <button type="button" id="addRecommendationsBtn" class="btn-msg-action btn-add-recommendation" data-type="Recommendation">
+                      <span class="btn-msg-icon">+</span> Add recommendations
+                    </button>
+                    <button type="button" id="addQuotesBtn" class="btn-msg-action btn-add-quote" data-type="Quote">
+                      <span class="btn-msg-icon">+</span> Add quotes
+                    </button>
+                  </div>
+                </div>
+
+                <div id="messagesTableContainer" class="messages-table-container">
+                  <!-- Rendered dynamically by app.js: table or empty state -->
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-top: 1.5rem;">
                 <label>Was AI used to assist in summary generation?</label>
                 <div class="checkbox-group">
                   <label><input type="checkbox" name="aiAssistance" value="The summary was written by hand"> The summary was written by hand</label>
@@ -306,7 +331,7 @@
               </div>
             </fieldset>
             <div class="stage-actions">
-              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back: Headline Findings</button>
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back: Outputs</button>
               <button type="button" class="btn-primary btn-next-stage" data-target="stage-7">Next: Review &amp; Submit &rarr;</button>
             </div>
           </div>
@@ -315,7 +340,7 @@
         <!-- Stage 7: Consent & Submission -->
         <div class="form-stage hidden" id="stage-7" role="tabpanel" aria-labelledby="tab-stage-7">
           <fieldset>
-            <legend>7. Review &amp; Submit</legend>
+            <legend>Review &amp; Submit</legend>
             <p class="consent-text">
               By submitting this entry, I confirm that:
             </p>
@@ -368,43 +393,45 @@
 
         <div class="form-group">
           <label>Where did engagement take place?</label>
-          <div class="checkbox-group">
+          <div class="checkbox-group three-col">
             <label><input type="checkbox" name="p_location" value="Online"> Online</label>
             <label><input type="checkbox" name="p_location" value="Offline"> Offline</label>
             <label><input type="checkbox" name="p_location" value="Hybrid"> Hybrid</label>
           </div>
         </div>
 
-        <div class="form-group">
-          <label for="p_recruitmentMethod">Recruitment Method</label>
-          <select id="p_recruitmentMethod">
-            <option value="">-- Select Method --</option>
-            <option value="Self selected / volunteered">Self selected / volunteered</option>
-            <option value="Demographic lottery">Demographic lottery</option>
-            <option value="Peer recruitment (snowball)">Peer recruitment (snowball)</option>
-            <option value="Statistical sample">Statistical sample</option>
-            <option value="Other">Other</option>
-          </select>
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="p_recruitmentMethod">Recruitment Method</label>
+            <select id="p_recruitmentMethod">
+              <option value="">-- Select Method --</option>
+              <option value="Self selected / volunteered">Self selected / volunteered</option>
+              <option value="Demographic lottery">Demographic lottery</option>
+              <option value="Peer recruitment (snowball)">Peer recruitment (snowball)</option>
+              <option value="Statistical sample">Statistical sample</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="form-group col">
+            <label for="p_recruitmentDescription">Recruitment Description</label>
+            <input type="text" id="p_recruitmentDescription" placeholder="Briefly describe the recruitment approach...">
+          </div>
         </div>
 
-        <div class="form-group">
-          <label for="p_recruitmentDescription">Recruitment Description</label>
-          <input type="text" id="p_recruitmentDescription" placeholder="Briefly describe the recruitment approach...">
-        </div>
-
-        <div class="form-group">
-          <label for="p_targetPopulation">Specific Target Population</label>
-          <input type="text" id="p_targetPopulation" placeholder="e.g. Young people aged 18-25, healthcare workers">
-        </div>
-
-        <div class="form-group">
-          <label for="p_geographicOrigin">Where were participants from?</label>
-          <input type="text" id="p_geographicOrigin" placeholder="e.g. Greater Manchester, UK-wide">
+        <div class="form-row">
+          <div class="form-group col">
+            <label for="p_targetPopulation">Specific Target Population</label>
+            <input type="text" id="p_targetPopulation" placeholder="e.g. Young people aged 18-25, healthcare workers">
+          </div>
+          <div class="form-group col">
+            <label for="p_geographicOrigin">Where were participants from?</label>
+            <input type="text" id="p_geographicOrigin" placeholder="e.g. Greater Manchester, UK-wide">
+          </div>
         </div>
 
         <div class="form-group">
           <label>Methods Used to Engage Participants</label>
-          <div class="checkbox-group multi-col">
+          <div class="checkbox-group three-col">
             <label><input type="checkbox" name="p_methods" value="Citizens’ Assembly"> Citizens’ Assembly</label>
             <label><input type="checkbox" name="p_methods" value="Citizens' Jury"> Citizens' Jury</label>
             <label><input type="checkbox" name="p_methods" value="Deliberation"> Deliberation</label>
@@ -424,7 +451,7 @@
 
         <div class="form-group">
           <label>Learning &amp; Facilitation Details</label>
-          <div class="checkbox-group">
+          <div class="checkbox-group three-col">
             <label><input type="checkbox" name="p_learning" value="There was a learning phase for participants"> Learning phase for participants</label>
             <label><input type="checkbox" name="p_learning" value="There were trained facilitators involved"> Trained facilitators involved</label>
             <label><input type="checkbox" name="p_learning" value="Materials from the learning phase have been published"> Learning materials published</label>
@@ -486,6 +513,38 @@
         <div class="dialog-actions">
           <button type="button" id="cancelResourceBtn" class="btn-secondary">Cancel</button>
           <button type="button" id="saveResourceBtn" class="btn-primary">Add Resource</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Paste Messages Modal -->
+    <dialog id="pasteMessagesModal">
+      <form id="pasteMessagesForm" method="dialog">
+        <h3 id="pasteModalTitle">Add Entries</h3>
+        <p class="modal-instruction" id="pasteModalInstruction">
+          Paste your text below with <strong>each entry on a new line</strong>. Empty lines will be automatically skipped.
+        </p>
+
+        <div class="form-group">
+          <label for="pasteMessagesType">Tag As</label>
+          <select id="pasteMessagesType">
+            <option value="Action">Action</option>
+            <option value="Recommendation">Recommendation</option>
+            <option value="Quote">Quote</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="pasteMessagesTextarea">Paste Newline-Separated Entries *</label>
+          <textarea id="pasteMessagesTextarea" rows="8" placeholder="Paste entries here, one per line..."></textarea>
+          <div class="paste-counter-row">
+            <small id="pastePreviewCount" class="paste-counter">0 entries detected</small>
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" id="cancelPasteBtn" class="btn-secondary">Cancel</button>
+          <button type="button" id="confirmPasteBtn" class="btn-primary">Add to Messages</button>
         </div>
       </form>
     </dialog>

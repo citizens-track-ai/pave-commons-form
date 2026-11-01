@@ -15,6 +15,7 @@ const state = {
   involvedOrganisations: [],
   participants: [],          // Array of participant group objects
   resources: [],             // Array of resource objects
+  messages: [],              // Array of message objects: { id, text, type }
 };
 
 const STAGES_CONFIG = [
@@ -22,7 +23,7 @@ const STAGES_CONFIG = [
   { id: "stage-2", label: "Project Details", isFullOnly: false },
   { id: "stage-3", label: "Organisations", isFullOnly: true },
   { id: "stage-4", label: "Participants", isFullOnly: true },
-  { id: "stage-5", label: "Findings", isFullOnly: true },
+  { id: "stage-5", label: "Outputs", isFullOnly: true },
   { id: "stage-6", label: "Resources", isFullOnly: true },
   { id: "stage-7", label: "Review & Submit", isFullOnly: false },
 ];
@@ -59,7 +60,8 @@ function isStageComplete(stageId) {
     case "stage-5": {
       const findings = (document.getElementById("headlineFindings")?.value || "").trim();
       const aiAssistance = getCheckedValues("aiAssistance");
-      return findings.length > 0 || aiAssistance.length > 0;
+      const hasMessages = state.messages.some((m) => m.text && m.text.trim().length > 0);
+      return findings.length > 0 || aiAssistance.length > 0 || hasMessages;
     }
     case "stage-6": {
       const published = getCheckedValues("publishedResources");
@@ -230,9 +232,11 @@ document.addEventListener("DOMContentLoaded", () => {
   initOrgPickers();
   initParticipantManager();
   initResourceManager();
+  initMessagesManager();
   initFormSubmission();
   checkEditMode();
   renderStageTabs();
+  renderMessagesTable();
   goToStage("stage-1");
 });
 
@@ -344,6 +348,14 @@ async function checkEditMode() {
     // Prepopulate resources
     state.resources = c.resources || [];
     renderResourcesList(document.getElementById("resourcesList"));
+
+    // Prepopulate messages
+    state.messages = (c.messages || []).map((m) => ({
+      id: m.id || null,
+      text: m.text || m.Name || "",
+      type: m.type || m.Type || "Recommendation",
+    }));
+    renderMessagesTable();
 
     // Update banner and submit button
     bannerTitle.textContent = `Editing Case #${c.id}: "${c.projectTitle}"`;
@@ -829,7 +841,249 @@ function renderResourcesList(listEl) {
 }
 
 /* -------------------------------------------------------------
- * 6. Form Submission (Create or Edit)
+ * 6. Messages Manager (Outputs Stage: Actions, Recommendations, Quotes)
+ * ------------------------------------------------------------- */
+function initMessagesManager() {
+  const pasteModal = document.getElementById("pasteMessagesModal");
+  const pasteTitle = document.getElementById("pasteModalTitle");
+  const pasteTypeSelect = document.getElementById("pasteMessagesType");
+  const pasteTextarea = document.getElementById("pasteMessagesTextarea");
+  const pasteCount = document.getElementById("pastePreviewCount");
+  const cancelBtn = document.getElementById("cancelPasteBtn");
+  const confirmBtn = document.getElementById("confirmPasteBtn");
+
+  const btnAction = document.getElementById("addActionsBtn");
+  const btnRec = document.getElementById("addRecommendationsBtn");
+  const btnQuote = document.getElementById("addQuotesBtn");
+
+  function openPasteModal(type) {
+    if (!pasteModal) return;
+    const targetType = type || "Recommendation";
+    if (pasteTypeSelect) pasteTypeSelect.value = targetType;
+    if (pasteTitle) {
+      const titles = {
+        Action: "Add Actions",
+        Recommendation: "Add Recommendations",
+        Quote: "Add Quotes",
+      };
+      pasteTitle.textContent = titles[targetType] || `Add ${targetType}s`;
+    }
+    if (pasteTextarea) {
+      pasteTextarea.value = "";
+    }
+    if (pasteCount) {
+      pasteCount.textContent = "0 entries detected";
+    }
+    pasteModal.showModal();
+    if (pasteTextarea) {
+      setTimeout(() => pasteTextarea.focus(), 60);
+    }
+  }
+
+  if (btnAction) btnAction.addEventListener("click", () => openPasteModal("Action"));
+  if (btnRec) btnRec.addEventListener("click", () => openPasteModal("Recommendation"));
+  if (btnQuote) btnQuote.addEventListener("click", () => openPasteModal("Quote"));
+
+  if (pasteTextarea && pasteCount) {
+    pasteTextarea.addEventListener("input", () => {
+      const lines = pasteTextarea.value
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      pasteCount.textContent = `${lines.length} ${lines.length === 1 ? "entry" : "entries"} detected`;
+    });
+  }
+
+  if (cancelBtn && pasteModal) {
+    cancelBtn.addEventListener("click", () => pasteModal.close());
+  }
+
+  if (confirmBtn && pasteModal) {
+    confirmBtn.addEventListener("click", () => {
+      const lines = (pasteTextarea?.value || "")
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+
+      if (lines.length === 0) {
+        alert("Please paste at least one line of text or click Cancel.");
+        pasteTextarea?.focus();
+        return;
+      }
+
+      const selectedType = pasteTypeSelect?.value || "Recommendation";
+      lines.forEach((line) => {
+        state.messages.push({
+          id: null,
+          text: line,
+          type: selectedType,
+        });
+      });
+
+      pasteModal.close();
+      renderMessagesTable();
+      updateStageProgress();
+    });
+  }
+}
+
+function renderMessagesTable() {
+  const container = document.getElementById("messagesTableContainer");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (state.messages.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "messages-empty-state";
+    empty.innerHTML = `
+      <div class="empty-icon">📝</div>
+      <p class="empty-title">No outputs added yet</p>
+      <p class="empty-hint">Click <strong>+ Add actions</strong>, <strong>+ Add recommendations</strong>, or <strong>+ Add quotes</strong> above to bulk paste entries, or add a single line directly.</p>
+      <button type="button" class="btn-secondary btn-sm" id="emptyAddSingleBtn">+ Add single message</button>
+    `;
+    container.appendChild(empty);
+
+    const emptyAddBtn = empty.querySelector("#emptyAddSingleBtn");
+    if (emptyAddBtn) {
+      emptyAddBtn.addEventListener("click", () => {
+        state.messages.push({ id: null, text: "", type: "Recommendation" });
+        renderMessagesTable();
+        const inputs = container.querySelectorAll(".msg-text-input");
+        if (inputs.length) inputs[inputs.length - 1].focus();
+        updateStageProgress();
+      });
+    }
+    return;
+  }
+
+  // Counts
+  const actionCount = state.messages.filter((m) => m.type === "Action").length;
+  const recCount = state.messages.filter((m) => m.type === "Recommendation").length;
+  const quoteCount = state.messages.filter((m) => m.type === "Quote").length;
+
+  const tableWrapper = document.createElement("div");
+  tableWrapper.className = "messages-table-wrap";
+
+  let rowsHtml = "";
+  state.messages.forEach((msg, idx) => {
+    const typeClass = msg.type === "Action" ? "type-action" : msg.type === "Recommendation" ? "type-recommendation" : "type-quote";
+    rowsHtml += `
+      <tr data-index="${idx}">
+        <td class="col-type">
+          <select class="msg-type-select ${typeClass}" data-index="${idx}">
+            <option value="Action" ${msg.type === "Action" ? "selected" : ""}>Action</option>
+            <option value="Recommendation" ${msg.type === "Recommendation" ? "selected" : ""}>Recommendation</option>
+            <option value="Quote" ${msg.type === "Quote" ? "selected" : ""}>Quote</option>
+          </select>
+        </td>
+        <td class="col-content">
+          <textarea class="msg-text-input" data-index="${idx}" rows="2" placeholder="Enter message text...">${escapeHtml(msg.text)}</textarea>
+        </td>
+        <td class="col-actions">
+          <button type="button" class="btn-remove-msg" data-index="${idx}" title="Remove entry" aria-label="Remove entry">&times;</button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tableWrapper.innerHTML = `
+    <table class="messages-table">
+      <thead>
+        <tr>
+          <th style="width: 170px;">Type</th>
+          <th>Message Content (Inline Editable)</th>
+          <th style="width: 50px; text-align: center;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rowsHtml}
+      </tbody>
+    </table>
+    <div class="messages-table-footer">
+      <button type="button" class="btn-secondary btn-sm" id="tableAddSingleBtn">+ Add single message</button>
+      <div class="messages-counts-summary">
+        <span class="count-pill pill-action">${actionCount} Actions</span>
+        <span class="count-pill pill-rec">${recCount} Recommendations</span>
+        <span class="count-pill pill-quote">${quoteCount} Quotes</span>
+        <span class="count-total">Total: ${state.messages.length}</span>
+      </div>
+    </div>
+  `;
+
+  container.appendChild(tableWrapper);
+
+  // Wire events
+  const textInputs = tableWrapper.querySelectorAll(".msg-text-input");
+  textInputs.forEach((ta) => {
+    ta.addEventListener("input", (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (!isNaN(idx) && state.messages[idx]) {
+        state.messages[idx].text = e.target.value;
+        updateStageProgress();
+      }
+    });
+  });
+
+  const typeSelects = tableWrapper.querySelectorAll(".msg-type-select");
+  typeSelects.forEach((sel) => {
+    sel.addEventListener("change", (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (!isNaN(idx) && state.messages[idx]) {
+        state.messages[idx].type = e.target.value;
+        sel.className = `msg-type-select ${e.target.value === "Action" ? "type-action" : e.target.value === "Recommendation" ? "type-recommendation" : "type-quote"}`;
+        updateMessagesSummaryPills(container);
+        updateStageProgress();
+      }
+    });
+  });
+
+  const deleteBtns = tableWrapper.querySelectorAll(".btn-remove-msg");
+  deleteBtns.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (!isNaN(idx)) {
+        state.messages.splice(idx, 1);
+        renderMessagesTable();
+        updateStageProgress();
+      }
+    });
+  });
+
+  const tableAddBtn = tableWrapper.querySelector("#tableAddSingleBtn");
+  if (tableAddBtn) {
+    tableAddBtn.addEventListener("click", () => {
+      state.messages.push({ id: null, text: "", type: "Recommendation" });
+      renderMessagesTable();
+      const updatedInputs = container.querySelectorAll(".msg-text-input");
+      if (updatedInputs.length) {
+        const lastInput = updatedInputs[updatedInputs.length - 1];
+        lastInput.focus();
+        lastInput.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+      updateStageProgress();
+    });
+  }
+}
+
+function updateMessagesSummaryPills(container) {
+  const actionCount = state.messages.filter((m) => m.type === "Action").length;
+  const recCount = state.messages.filter((m) => m.type === "Recommendation").length;
+  const quoteCount = state.messages.filter((m) => m.type === "Quote").length;
+
+  const pillAction = container.querySelector(".pill-action");
+  const pillRec = container.querySelector(".pill-rec");
+  const pillQuote = container.querySelector(".pill-quote");
+  const totalEl = container.querySelector(".count-total");
+
+  if (pillAction) pillAction.textContent = `${actionCount} Actions`;
+  if (pillRec) pillRec.textContent = `${recCount} Recommendations`;
+  if (pillQuote) pillQuote.textContent = `${quoteCount} Quotes`;
+  if (totalEl) totalEl.textContent = `Total: ${state.messages.length}`;
+}
+
+/* -------------------------------------------------------------
+ * 7. Form Submission (Create or Edit)
  * ------------------------------------------------------------- */
 function initFormSubmission() {
   const form = document.getElementById("caseForm");
@@ -902,6 +1156,7 @@ function initFormSubmission() {
         inclusionEfforts: (document.getElementById("inclusionEfforts")?.value || "").trim(),
         limitations: (document.getElementById("limitations")?.value || "").trim(),
         headlineFindings: (document.getElementById("headlineFindings")?.value || "").trim(),
+        messages: state.messages.filter((m) => m.text && m.text.trim().length > 0),
         aiAssistance: getCheckedValues("aiAssistance"),
         publishedResources: getCheckedValues("publishedResources"),
         resources: state.resources,
