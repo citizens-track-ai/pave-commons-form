@@ -8,24 +8,146 @@
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>Public AI Voices &amp; Engagement (PAVE) Case Book</h1>
-      <p class="subtitle">Contribute to the casebook documenting public engagement on AI.</p>
+    <header class="app-header">
+      <div class="header-titles">
+        <h1>Public AI Voices &amp; Engagement (PAVE) Case Book</h1>
+        <p class="subtitle">Contribute to the casebook documenting public engagement on AI.</p>
+      </div>
+      <div class="staff-auth-bar" id="staffAuthBar">
+        <button type="button" id="staffLoginBtn" class="btn-staff-auth">Staff Sign In</button>
+        <div id="staffActiveBadge" class="staff-active-badge hidden">
+          <span class="staff-dot" aria-hidden="true"></span>
+          <span id="staffUserLabel">Signed in</span>
+          <button type="button" id="staffLogoutBtn" class="btn-staff-logout" title="Sign out of NocoDB staff session">Sign out</button>
+        </div>
+      </div>
     </header>
 
     <!-- Edit Mode Banner -->
     <div id="editBanner" class="edit-banner hidden">
       <div class="edit-banner-content">
-        <span class="badge">Edit Mode</span>
+        <div class="edit-banner-badges">
+          <span class="badge" id="editBannerBadge">Edit Mode</span>
+          <span class="badge badge-staff hidden" id="editBannerStaffBadge">NocoDB Editor</span>
+        </div>
         <strong id="editBannerTitle">Editing Case</strong>
         <p id="editBannerSubtitle">You are modifying an existing case entry. Submitting will update the database record.</p>
+        <div id="staffWorkflowRow" class="staff-workflow-row hidden">
+          <label for="staffWorkflowStatus">Workflow Status:</label>
+          <select id="staffWorkflowStatus" class="staff-workflow-select">
+            <option value="Nomination">Nomination</option>
+            <option value="Submission">Submission</option>
+            <option value="Under Review">Under Review</option>
+            <option value="Completed">Completed</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+        </div>
       </div>
-      <a href="/" class="btn-cancel-edit">Switch to New Submission</a>
+      <div class="edit-banner-actions">
+        <button type="button" id="openDrawerBtn" class="btn-open-drawer hidden">
+          💬 Comments &amp; History <span id="drawerCountBadge" class="drawer-count-badge">0</span>
+        </button>
+        <a href="/" class="btn-cancel-edit">Switch to New Submission</a>
+      </div>
     </div>
 
-    <form id="caseForm">
+    <!-- Initial About & Data Protection Page Content (shown when no editKey is provided) -->
+    <section id="aboutIntroSection" class="about-landing-section" aria-label="About the PAVE Case Book">
+      <div class="about-content-body">
+        <p class="about-lead-question">
+          Do you have a project that demonstrates public voice and engagement around AI that should be included in the <a href="https://www.pavecasebook.org" target="_blank" rel="noopener noreferrer">PAVE Case Book</a>?
+        </p>
+        <p>The case book includes entries:</p>
+        <ul>
+          <li>Mapping engagement &ndash; showcasing outputs from dialogue, deliberation and participatory processes across the world.</li>
+          <li>Describing methods &ndash; exploring approaches for inclusive, informed and impactful public participation on AI.</li>
+          <li>Sharing learning and good practices &ndash; demonstrating how public voices can shape the future of AI.</li>
+        </ul>
+
+        <h2>How can you contribute?</h2>
+        <p>
+          If you have been involved in running or researching a public engagement project that explored the development, governance or use of artificial intelligence, anywhere in the world, we want to hear from you.
+        </p>
+        <ul>
+          <li>Nominate a project that our research team should document</li>
+          <li>Share a full case study of a project you have been involved in</li>
+        </ul>
+
+        <div class="about-disclosures-group">
+          <details class="about-disclosure">
+            <summary>What happens with contributions?</summary>
+            <div class="about-disclosure-body">
+              <p>Submissions are reviewed by the PAVE Team.</p>
+              <ul>
+                <li>For nominations, we may reach out to ask you for more details, or may carry out desk-research to populate case study details;</li>
+                <li>For full submissions, we will review your entry and suggest any editorial updates.</li>
+              </ul>
+              <p>After submissions have been reviewed by the team, they may be included in the PAVE Case Book as:</p>
+              <ul>
+                <li>Mapping entries &ndash; providing basic Who, What, Where information about a public voice and engagement project</li>
+                <li>Full cases &ndash; including more detailed information about the methodology and outputs from the project</li>
+                <li>Featured cases &ndash; selected to represent a range of approaches and communities engaged through public engagement on AI</li>
+              </ul>
+              <p>If your submission is not included, we will write to let you know.</p>
+              <p>
+                The PAVE Case Book forms a part of the <a href="https://www.citizens-track.org" target="_blank" rel="noopener noreferrer">Citizens' Track on AI</a>, and we will be seeking opportunities over the coming year to showcase examples of public engagement from the case book &ndash; and to carry out analysis and synthesis of messages from included cases. This builds on a <a href="https://citizens-track.org/2026/07/11/citizens-track-update.html" target="_blank" rel="noopener noreferrer">prototype showcase of the PAVE Case Book at AI for Good 2026</a>.
+              </p>
+            </div>
+          </details>
+
+          <details class="about-disclosure">
+            <summary>About the team</summary>
+            <div class="about-disclosure-body">
+              <p>
+                The Public AI Voices &amp; Engagement (PAVE) Case Book project is supported and co-hosted by the University of Sheffield’s Centre for Machine Intelligence, Ada Lovelace Institute, Connected by Data, the Citizens Track on AI, ISWE Foundation &amp; partners.
+              </p>
+              <p>
+                The project is led by Dr Susan Oman, Tim Davies and Octavia Field-Reid and supported by a team including Dr Emily Rempel, Canning Malkin, Dr Erin McCloskey and Dr Emrys Schoemaker.
+              </p>
+            </div>
+          </details>
+
+          <details class="about-disclosure">
+            <summary>Data Protection Statement</summary>
+            <div class="about-disclosure-body">
+              <p>
+                All information submitted by this form will be held by <a href="https://connectedbydata.org/policies/data-protection" target="_blank" rel="noopener noreferrer">Connected by Data according to our data protection policy</a>. Access to the database containing submissions may be shared with approved project partners on the basis of signed data processing agreements.
+              </p>
+              <p>
+                With the exception of personal contact information, we may publish any of the information submitted to the PAVE casebook as part of the PAVE Website, printed resources or expo displays. We may make edits to information provided.
+              </p>
+              <p>
+                By submitting original content or analysis through this form you grant Connected by Data and its partners permission to use and re-use that content, in part or in full.
+              </p>
+              <p>
+                Information on cases may be published as part of an open dataset, under an open license.
+              </p>
+              <p>
+                You may choose during your submission whether or not you wish to be acknowledged as a contributor. You can let us know at any time if you want to change how you are acknowledged in materials going forward.
+              </p>
+              <p>
+                If you upload photos in your submission, you must confirm that the appropriate consents are in place for those photos to be republished. We will only use images in association with the case study they relate to unless otherwise agreed in writing.
+              </p>
+              <p>
+                If you upload documents as part of your submission, you agree that these may be republished as part of the PAVE website. Please ask us if you would prefer that we do not upload, and instead link to original copies on project websites, and we will endeavour to do this. Note that links to the original documents can be made available by way of a citation.
+              </p>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <div class="about-landing-actions">
+        <button type="button" id="startSubmissionBtn" class="btn-primary">Next &rarr;</button>
+      </div>
+    </section>
+
+    <form id="caseForm" class="hidden">
       <input type="hidden" id="caseId" name="caseId">
       <input type="hidden" id="editKey" name="editKey">
+
+      <div id="backToAboutRow" class="back-to-about-row">
+        <button type="button" id="backToAboutBtn" class="btn-secondary btn-sm">&larr; Back to About &amp; Data Protection</button>
+      </div>
 
       <!-- Intent: What would you like to do? -->
       <fieldset id="intentFieldset">
@@ -259,14 +381,17 @@
                 <textarea id="headlineFindings" name="headlineFindings" rows="3" placeholder="Summary of findings or key outputs from the project report..."></textarea>
               </div>
 
-              <!-- Messages: Actions, Recommendations & Quotes -->
+              <!-- Messages: Issues, Actions, Recommendations & Quotes -->
               <div class="form-group messages-section">
                 <div class="messages-header">
                   <div>
-                    <label class="messages-section-title">Messages: Actions, Recommendations &amp; Quotes</label>
-                    <p class="section-desc">Create structured outputs from this project. Use the buttons below to bulk-paste newline-separated entries, then edit inline.</p>
+                    <label class="messages-section-title">Messages: Issues, Recommendations &amp; Quotes</label>
+                    <p class="section-desc">Create structured outputs from this project. Use the buttons below to bulk-paste newline-separated entries, then edit their short titles and text inline.</p>
                   </div>
                   <div class="messages-btn-toolbar">
+                    <button type="button" id="addIssuesBtn" class="btn-msg-action btn-add-issue" data-type="Issue">
+                      <span class="btn-msg-icon">+</span> Add issues
+                    </button>
                     <button type="button" id="addActionsBtn" class="btn-msg-action btn-add-action" data-type="Action">
                       <span class="btn-msg-icon">+</span> Add actions
                     </button>
@@ -350,9 +475,9 @@
               <li>If photos are attached, appropriate consent is in place for publication online.</li>
             </ol>
             <div class="form-group">
-              <label>
+              <label class="consent-checkbox-label">
                 <input type="checkbox" id="consentCheck" required>
-                I agree to the terms and Connected by Data data protection policy. *
+                I agree to the terms and <a href="https://connectedbydata.org/policies/data-protection" target="_blank" rel="noopener noreferrer">Connected by Data data protection policy</a>. *
               </label>
             </div>
           </fieldset>
@@ -528,6 +653,7 @@
         <div class="form-group">
           <label for="pasteMessagesType">Tag As</label>
           <select id="pasteMessagesType">
+            <option value="Issue">Issue</option>
             <option value="Action">Action</option>
             <option value="Recommendation">Recommendation</option>
             <option value="Quote">Quote</option>
@@ -548,6 +674,77 @@
         </div>
       </form>
     </dialog>
+
+    <!-- Staff Sign-In Modal -->
+    <dialog id="staffLoginModal">
+      <form id="staffLoginForm" method="dialog">
+        <h3>NocoDB Staff Sign In</h3>
+        <p class="modal-instruction">
+          Enter your personal NocoDB API Token (<code>xc-token</code>) to authenticate against the PAVE NocoDB user list.
+          Authenticated editors can edit <strong>Completed</strong> cases, view and post record comments, and inspect case revision history.
+        </p>
+
+        <div class="form-group">
+          <label for="staffTokenInput">Personal NocoDB API Token *</label>
+          <input type="password" id="staffTokenInput" placeholder="Paste your NocoDB API token..." autocomplete="off">
+          <small>Generate a token in NocoDB under <strong>Account Settings &rarr; API Tokens</strong> (ensure Comments &amp; Records permissions are enabled if using a scoped token).</small>
+        </div>
+
+        <div id="staffLoginError" class="status-msg error hidden" style="margin-top: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.88rem;"></div>
+
+        <div class="dialog-actions">
+          <button type="button" id="cancelStaffLoginBtn" class="btn-secondary">Cancel</button>
+          <button type="button" id="confirmStaffLoginBtn" class="btn-primary">Verify &amp; Sign In</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Slide-over Drawer for Comments & Revision History -->
+    <div id="staffDrawerBackdrop" class="drawer-backdrop hidden"></div>
+    <aside id="staffDrawer" class="staff-drawer hidden" aria-label="Case Comments and Revision History">
+      <div class="drawer-header">
+        <div>
+          <h3 id="drawerTitle">Case Activity</h3>
+          <p class="drawer-subtitle" id="drawerSubtitle">Comments &amp; Revision History</p>
+        </div>
+        <button type="button" id="closeDrawerBtn" class="btn-close-drawer" aria-label="Close drawer">&times;</button>
+      </div>
+
+      <div class="drawer-tabs" role="tablist">
+        <button type="button" class="drawer-tab-btn is-active" id="drawerTabCommentsBtn" data-tab="comments" role="tab" aria-selected="true">
+          Comments <span id="drawerCommentsTabCount" class="drawer-tab-pill">0</span>
+        </button>
+        <button type="button" class="drawer-tab-btn" id="drawerTabHistoryBtn" data-tab="history" role="tab" aria-selected="false">
+          Revision History <span id="drawerHistoryTabCount" class="drawer-tab-pill">0</span>
+        </button>
+      </div>
+
+      <div id="drawerPermissionNotice" class="drawer-permission-notice hidden"></div>
+
+      <!-- Comments Panel -->
+      <div id="drawerPanelComments" class="drawer-panel">
+        <div id="drawerCommentsList" class="drawer-comments-list">
+          <p class="empty-note">No comments yet on this case.</p>
+        </div>
+
+        <form id="drawerCommentForm" class="drawer-comment-composer">
+          <label for="newCommentInput">Add a Comment</label>
+          <textarea id="newCommentInput" rows="3" placeholder="Write a comment on this case record..."></textarea>
+          <div id="commentSubmitError" class="drawer-inline-error hidden"></div>
+          <div class="composer-actions">
+            <span class="composer-attribution" id="composerAttribution">Posting as NocoDB user</span>
+            <button type="submit" id="postCommentBtn" class="btn-primary btn-sm">Post Comment</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Revision History Panel -->
+      <div id="drawerPanelHistory" class="drawer-panel hidden">
+        <div id="drawerHistoryList" class="drawer-history-list">
+          <p class="empty-note">No revision history recorded for this case.</p>
+        </div>
+      </div>
+    </aside>
   </div>
 
   <script src="app.js"></script>

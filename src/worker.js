@@ -66,17 +66,27 @@ export default {
         return await handleSearchOrganisations(url, nocodbBaseUrl, nocodbToken, corsHeaders);
       }
 
-      // 2. Load case for editing endpoint
-      if (url.pathname === "/api/case" && request.method === "GET") {
-        return await handleGetCaseForEdit(url, nocodbBaseUrl, nocodbToken, corsHeaders);
+      // 2. Staff authentication check endpoint
+      if (url.pathname === "/api/auth/me" && request.method === "GET") {
+        return await handleAuthMe(request, nocodbBaseUrl, corsHeaders);
       }
 
-      // 3. Submit or Edit Case Form endpoint
+      // 3. Load case for editing endpoint
+      if (url.pathname === "/api/case" && request.method === "GET") {
+        return await handleGetCaseForEdit(request, url, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
+      // 4. Case Comments & Revision History endpoint (Staff only)
+      if (url.pathname === "/api/case/comments" && (request.method === "GET" || request.method === "POST")) {
+        return await handleCaseComments(request, url, nocodbBaseUrl, corsHeaders);
+      }
+
+      // 5. Submit or Edit Case Form endpoint
       if (url.pathname === "/api/submit" && request.method === "POST") {
         return await handleSubmitOrEditCase(request, nocodbBaseUrl, nocodbToken, corsHeaders);
       }
 
-      // 4. Static asset serving when deployed as Cloudflare Worker with [assets]
+      // 6. Static asset serving when deployed as Cloudflare Worker with [assets]
       if (env.ASSETS) {
         return await env.ASSETS.fetch(request);
       }
@@ -161,18 +171,311 @@ function formatOrg(raw) {
 }
 
 /**
+ * Verify a user-supplied NocoDB Personal API Token against NocoDB's user/base role API.
+ * Checks `X-Noco-Token` or `Authorization: Bearer <token>`.
+ */
+async function verifyStaffUser(request, baseUrl) {
+  let userToken = request.headers.get("X-Noco-Token") || "";
+  if (!userToken) {
+    const authHeader = request.headers.get("Authorization") || "";
+    if (authHeader.toLowerCase().startsWith("bearer ")) {
+      userToken = authHeader.slice(7).trim();
+    }
+  }
+  userToken = sanitizeString(userToken, 250);
+  if (!userToken || userToken.length < 10) {
+    return { isAuthenticated: false, user: null, userToken: null };
+  }
+
+  try {
+    const meRes = await fetch(`${baseUrl}/api/v1/db/auth/user/me?base_id=${BASE_ID}`, {
+      headers: { "xc-token": userToken },
+    });
+
+    if (!meRes.ok) {
+      return { isAuthenticated: false, user: null, userToken: null };
+    }
+
+    const meData = await meRes.json();
+    if (!meData || !meData.id || !meData.email) {
+      return { isAuthenticated: false, user: null, userToken: null };
+    }
+
+    const baseRoles = meData.base_roles || {};
+    const workspaceRoles = meData.workspace_roles || {};
+    const allowedRoles = ["owner", "creator", "editor", "commenter"];
+
+    let activeRole = allowedRoles.find((r) => baseRoles[r] === true) || null;
+    if (!activeRole) {
+      if (workspaceRoles["workspace-level-owner"] || workspaceRoles["workspace-level-creator"] || workspaceRoles["workspace-level-editor"]) {
+        activeRole = "editor";
+      }
+    }
+
+    if (!activeRole || baseRoles["no-access"]) {
+      return { isAuthenticated: false, user: null, userToken: null, reason: "User does not have editor/commenter access to this base." };
+    }
+
+    const canEdit = ["owner", "creator", "editor"].includes(activeRole);
+    return {
+      isAuthenticated: true,
+      canEdit,
+      user: {
+        id: meData.id,
+        email: meData.email,
+        displayName: meData.display_name || meData.email,
+        role: activeRole,
+      },
+      userToken,
+    };
+  } catch (err) {
+    console.error("Failed to verify NocoDB user token:", err);
+    return { isAuthenticated: false, user: null, userToken: null };
+  }
+}
+
+/**
+ * Handle GET /api/auth/me
+ * Validates the user's NocoDB personal API token and returns user profile & role.
+ */
+async function handleAuthMe(request, baseUrl, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated) {
+    return jsonResponse(
+      {
+        authenticated: false,
+        error: staff.reason || "Invalid NocoDB API token or insufficient permissions on this base.",
+      },
+      401,
+      corsHeaders
+    );
+  }
+
+  return jsonResponse(
+    {
+      authenticated: true,
+      canEdit: staff.canEdit,
+      user: staff.user,
+    },
+    200,
+    corsHeaders
+  );
+}
+
+/**
+ * Fetch comments and revision history for a case record from NocoDB's meta/comments API
+ */
+async function fetchCaseCommentsAndAudits(caseId, baseUrl, tokenToUse, fallbackToken) {
+  const fetchWithToken = async (tok, commentsOnly) => {
+    const url = `${baseUrl}/api/v2/meta/comments?fk_model_id=${TABLES.CASES}&row_id=${encodeURIComponent(caseId)}${commentsOnly ? "&comments_only=true" : ""}`;
+    return await fetch(url, { headers: { "xc-token": tok } });
+  };
+
+  let allItems = [];
+  let permissionWarning = null;
+
+  // Try fetching full activity stream (comments + revision audits) with staff token first, then fallback token
+  let res = await fetchWithToken(tokenToUse, false);
+  if (!res.ok && fallbackToken && fallbackToken !== tokenToUse) {
+    res = await fetchWithToken(fallbackToken, false);
+  }
+
+  if (res.ok) {
+    const data = await res.json();
+    allItems = data.list || (Array.isArray(data) ? data : []);
+  } else {
+    try {
+      const errBody = await res.json();
+      if (errBody?.message) {
+        permissionWarning = errBody.message;
+      }
+    } catch (_) {}
+  }
+
+  const comments = [];
+  const revisions = [];
+
+  for (const item of allItems) {
+    const opType = item.op_type || "";
+    const isComment = opType === "COMMENT" || (!opType && item.comment) || Boolean(item.comment && opType !== "DATA_UPDATE");
+
+    if (isComment && item.comment) {
+      comments.push({
+        id: item.id,
+        comment: item.comment,
+        user: item.user || item.created_by_email || "NocoDB User",
+        userId: item.fk_user_id || null,
+        resolved: Boolean(item.resolved),
+        createdAt: item.created_at || item.CreatedAt || null,
+        updatedAt: item.updated_at || item.UpdatedAt || null,
+      });
+    } else {
+      // Parse audit / revision entry
+      let parsedDetails = null;
+      let summary = item.description || "";
+      let fieldTitle = null;
+      let oldValue = null;
+      let newValue = null;
+
+      if (item.details) {
+        try {
+          parsedDetails = typeof item.details === "string" ? JSON.parse(item.details) : item.details;
+          if (parsedDetails && typeof parsedDetails === "object") {
+            const colMeta = parsedDetails.column_meta || {};
+            const dataObj = parsedDetails.data || {};
+            const oldObj = parsedDetails.old_data || {};
+            const changedKeys = Object.keys(dataObj);
+            if (changedKeys.length > 0) {
+              const key = changedKeys[0];
+              // Redact raw EditKey values in audit display for safety
+              if (key === "EditKey") {
+                fieldTitle = "EditKey";
+                oldValue = oldObj[key] ? "••••••••" : null;
+                newValue = dataObj[key] ? "•••••••• (Updated)" : null;
+              } else {
+                fieldTitle = colMeta[key]?.title || key;
+                oldValue = oldObj[key] !== undefined ? oldObj[key] : null;
+                newValue = dataObj[key] !== undefined ? dataObj[key] : null;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      revisions.push({
+        id: item.id,
+        opType: opType || "UPDATE",
+        opSubType: item.op_sub_type || null,
+        user: item.user || "System",
+        field: fieldTitle,
+        oldValue,
+        newValue,
+        description: summary || null,
+        createdAt: item.created_at || item.CreatedAt || null,
+      });
+    }
+  }
+
+  return { comments, revisions, permissionWarning };
+}
+
+/**
+ * Handle GET & POST /api/case/comments
+ * Allows authenticated NocoDB staff users to read or post comments & view revision history.
+ */
+async function handleCaseComments(request, url, baseUrl, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated) {
+    return jsonResponse(
+      { error: "Staff authentication required to view or post comments." },
+      401,
+      corsHeaders
+    );
+  }
+
+  if (request.method === "GET") {
+    const rawId = url.searchParams.get("id") || url.searchParams.get("caseId") || "";
+    const caseId = Number(rawId);
+    if (!caseId || isNaN(caseId)) {
+      return jsonResponse({ error: "Valid caseId is required." }, 400, corsHeaders);
+    }
+
+    const { comments, revisions, permissionWarning } = await fetchCaseCommentsAndAudits(
+      caseId,
+      baseUrl,
+      staff.userToken,
+      null
+    );
+
+    return jsonResponse(
+      {
+        caseId,
+        comments,
+        revisions,
+        permissionWarning,
+      },
+      200,
+      corsHeaders
+    );
+  }
+
+  if (request.method === "POST") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return jsonResponse({ error: "Invalid JSON body." }, 400, corsHeaders);
+    }
+
+    const caseId = Number(body.caseId || body.id);
+    const commentText = sanitizeString(body.comment, 5000);
+
+    if (!caseId || isNaN(caseId)) {
+      return jsonResponse({ error: "Valid caseId is required." }, 400, corsHeaders);
+    }
+    if (!commentText) {
+      return jsonResponse({ error: "Comment text cannot be empty." }, 400, corsHeaders);
+    }
+
+    const postRes = await fetch(`${baseUrl}/api/v2/meta/comments`, {
+      method: "POST",
+      headers: {
+        "xc-token": staff.userToken,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        fk_model_id: TABLES.CASES,
+        row_id: String(caseId),
+        comment: commentText,
+      }),
+    });
+
+    if (!postRes.ok) {
+      let errMsg = "Failed to post comment to NocoDB.";
+      try {
+        const errJson = await postRes.json();
+        if (errJson?.message) errMsg = errJson.message;
+      } catch (_) {}
+      return jsonResponse({ error: errMsg }, postRes.status === 403 ? 403 : 502, corsHeaders);
+    }
+
+    const { comments, revisions, permissionWarning } = await fetchCaseCommentsAndAudits(
+      caseId,
+      baseUrl,
+      staff.userToken,
+      null
+    );
+
+    return jsonResponse(
+      {
+        success: true,
+        comments,
+        revisions,
+        permissionWarning,
+      },
+      200,
+      corsHeaders
+    );
+  }
+
+  return jsonResponse({ error: "Method not allowed" }, 405, corsHeaders);
+}
+
+/**
  * Handle GET /api/case?editKey=...[&id=...]
  * Conditions:
- * 1. editKey is provided and length >= 12
- * 2. Record exists and its stored EditKey matches and is >= 12 characters
- * 3. Workflow: Status is 'Completed'
+ * 1. Public users: editKey is provided (>= 12 chars), matches stored EditKey, and Workflow: Status is not 'Completed'
+ * 2. Authenticated NocoDB staff users: can load by id or editKey, can edit 'Completed' cases, and receive comments + revision history
  */
-async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
+async function handleGetCaseForEdit(request, url, baseUrl, token, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  const isStaff = staff.isAuthenticated && staff.canEdit;
+
   const editKey = sanitizeString(url.searchParams.get("editKey") || url.searchParams.get("editkey") || "", 60);
   const rawId = url.searchParams.get("id") || url.searchParams.get("caseId") || "";
   const caseId = rawId ? Number(rawId) : null;
 
-  if (!editKey || editKey.length < 12) {
+  if (!isStaff && (!editKey || editKey.length < 12)) {
     return jsonResponse(
       { error: "A valid edit key of at least 12 characters is required." },
       400,
@@ -180,10 +483,22 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
     );
   }
 
-  // Construct query: by EditKey and optional ID
-  let whereClause = `(EditKey,eq,${editKey})`;
-  if (caseId && !isNaN(caseId)) {
+  if (isStaff && (!editKey || editKey.length < 12) && (!caseId || isNaN(caseId))) {
+    return jsonResponse(
+      { error: "Please provide a valid Case ID (?id=...) or EditKey to load a case." },
+      400,
+      corsHeaders
+    );
+  }
+
+  // Construct query: by EditKey and/or ID
+  let whereClause = "";
+  if (isStaff && caseId && !isNaN(caseId) && (!editKey || editKey.length < 12)) {
+    whereClause = `(Id,eq,${caseId})`;
+  } else if (caseId && !isNaN(caseId)) {
     whereClause = `(Id,eq,${caseId})~and(EditKey,eq,${editKey})`;
+  } else {
+    whereClause = `(EditKey,eq,${editKey})`;
   }
 
   const queryUrl = `${baseUrl}/api/v2/tables/${TABLES.CASES}/records?where=${encodeURIComponent(whereClause)}&limit=1`;
@@ -223,11 +538,11 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
   const status = (caseRecord["Workflow: Status"] || "").trim().toLowerCase();
   const storedKey = (caseRecord["EditKey"] || "").trim();
 
-  // Validate condition: 'Completed' cases should NOT be possible to edit
-  if (status === "completed") {
+  // Validate condition: 'Completed' cases can only be edited by authenticated NocoDB staff
+  if (status === "completed" && !isStaff) {
     return jsonResponse(
       {
-        error: "This case has been marked as 'Completed' and can no longer be edited.",
+        error: "This case has been marked as 'Completed' and can no longer be edited. (NocoDB editors can sign in using 'Staff Sign In' to edit completed cases.)",
         currentStatus: caseRecord["Workflow: Status"],
       },
       403,
@@ -235,8 +550,8 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
     );
   }
 
-  // Validate condition: Stored EditKey must be at least 12 characters and match
-  if (storedKey.length < 12 || storedKey !== editKey) {
+  // Validate condition: Stored EditKey must be at least 12 characters and match (unless authenticated staff)
+  if (!isStaff && (storedKey.length < 12 || storedKey !== editKey)) {
     return jsonResponse(
       { error: "Invalid edit key for this case." },
       403,
@@ -311,11 +626,18 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
     );
     if (messagesRes.ok) {
       const msgData = await messagesRes.json();
-      messages = (msgData.list || []).map((m) => ({
-        id: m.Id || m.id,
-        text: m["Name"] || "",
-        type: m["Type"] || "Recommendation",
-      }));
+      const rawMsgList = msgData.list || [];
+      const typeCounters = {};
+      messages = rawMsgList.map((m) => {
+        const type = m["Type"] || "Recommendation";
+        typeCounters[type] = (typeCounters[type] || 0) + 1;
+        return {
+          id: m.Id || m.id,
+          title: m["Title"] || `${type} ${typeCounters[type]}`,
+          text: m["Name"] || "",
+          type,
+        };
+      });
     }
   }
 
@@ -354,8 +676,26 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
       return { id, name };
     });
 
+  // If authenticated NocoDB staff user, also fetch comments and revision history
+  let comments = [];
+  let revisions = [];
+  let activityWarning = null;
+  if (staff.isAuthenticated) {
+    const activity = await fetchCaseCommentsAndAudits(targetId, baseUrl, staff.userToken, token);
+    comments = activity.comments;
+    revisions = activity.revisions;
+    activityWarning = activity.permissionWarning;
+  }
+
   return jsonResponse(
     {
+      staff: staff.isAuthenticated
+        ? {
+            authenticated: true,
+            canEdit: staff.canEdit,
+            user: staff.user,
+          }
+        : { authenticated: false },
       case: {
         id: targetId,
         editKey: storedKey,
@@ -387,6 +727,9 @@ async function handleGetCaseForEdit(url, baseUrl, token, corsHeaders) {
         participants,
         resources,
         messages,
+        comments: staff.isAuthenticated ? comments : undefined,
+        revisions: staff.isAuthenticated ? revisions : undefined,
+        activityWarning: staff.isAuthenticated ? activityWarning : undefined,
       },
     },
     200,
@@ -418,7 +761,12 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     return jsonResponse({ error: "Invalid request format." }, 400, corsHeaders);
   }
 
-  const isEditMode = Boolean(payload.caseId && payload.editKey);
+  const staff = await verifyStaffUser(request, baseUrl);
+  const isStaffEditor = staff.isAuthenticated && staff.canEdit;
+  // Use staff member's personal token for NocoDB mutations so NocoDB audit history attributes changes to them
+  const activeWriteToken = isStaffEditor && staff.userToken ? staff.userToken : token;
+
+  const isEditMode = Boolean(payload.caseId && (payload.editKey || isStaffEditor));
   let existingCaseId = null;
   let existingRec = null;
 
@@ -427,7 +775,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     const editKey = sanitizeString(payload.editKey, 60);
     const caseId = Number(payload.caseId);
 
-    if (!editKey || editKey.length < 12 || isNaN(caseId)) {
+    if (isNaN(caseId) || (!isStaffEditor && (!editKey || editKey.length < 12))) {
       return jsonResponse(
         { error: "Invalid edit credentials provided." },
         400,
@@ -447,7 +795,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     const status = (existingRec["Workflow: Status"] || "").trim().toLowerCase();
     const storedKey = (existingRec["EditKey"] || "").trim();
 
-    if (status === "completed") {
+    if (status === "completed" && !isStaffEditor) {
       return jsonResponse(
         { error: "This case has been marked as 'Completed' and can no longer be edited." },
         403,
@@ -455,7 +803,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       );
     }
 
-    if (storedKey.length < 12 || storedKey !== editKey) {
+    if (!isStaffEditor && (storedKey.length < 12 || storedKey !== editKey)) {
       return jsonResponse(
         { error: "Invalid edit key for this case." },
         403,
@@ -504,17 +852,17 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
   const leadOrgIds = await resolveOrganisations(
     clampArray(payload.leadOrganisations, MAX_ORGS_PER_FIELD),
     baseUrl,
-    token
+    activeWriteToken
   );
   const fundingOrgIds = await resolveOrganisations(
     clampArray(payload.fundingOrganisations, MAX_ORGS_PER_FIELD),
     baseUrl,
-    token
+    activeWriteToken
   );
   const involvedOrgIds = await resolveOrganisations(
     clampArray(payload.involvedOrganisations, MAX_ORGS_PER_FIELD),
     baseUrl,
-    token
+    activeWriteToken
   );
 
   // Prepare Case data
@@ -543,12 +891,23 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     "Photos available?": sanitizeStringArray(payload.photosAvailable, 5),
   };
 
-  // Only assign workflow status and editKey on initial creation (preserve 'Completed' on edits)
+  // Only assign workflow status and editKey on initial creation (or allow authenticated staff to update workflow status)
   let generatedEditKey = null;
   if (!isEditMode) {
     caseData["Workflow: Status"] = isNomination ? "Nomination" : "Submission";
     generatedEditKey = generateSecureKey(16);
     caseData["EditKey"] = generatedEditKey;
+  } else if (isStaffEditor && payload.workflowStatus) {
+    const allowedWorkflow = sanitizeAllowedOption(payload.workflowStatus, [
+      "Nomination",
+      "Submission",
+      "Under Review",
+      "Completed",
+      "Rejected",
+    ]);
+    if (allowedWorkflow) {
+      caseData["Workflow: Status"] = allowedWorkflow;
+    }
   }
 
   let finalCaseId;
@@ -558,7 +917,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     const updateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
       method: "PATCH",
       headers: {
-        "xc-token": token,
+        "xc-token": activeWriteToken,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([{ Id: existingCaseId, ...caseData }]),
@@ -574,7 +933,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     const caseCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
       method: "POST",
       headers: {
-        "xc-token": token,
+        "xc-token": activeWriteToken,
         "Content-Type": "application/json",
       },
       body: JSON.stringify([caseData]),
@@ -617,7 +976,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       // Update existing participant
       await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
         method: "PATCH",
-        headers: { "xc-token": token, "Content-Type": "application/json" },
+        headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
         body: JSON.stringify([{ Id: p.id, ...pFields }]),
       });
       participantIds.push(Number(p.id));
@@ -625,7 +984,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       // Create new participant record
       const partCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.PARTICIPANTS}/records`, {
         method: "POST",
-        headers: { "xc-token": token, "Content-Type": "application/json" },
+        headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
         body: JSON.stringify([pFields]),
       });
       if (partCreateRes.ok) {
@@ -659,7 +1018,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         // Update existing resource
         await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
           method: "PATCH",
-          headers: { "xc-token": token, "Content-Type": "application/json" },
+          headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
           body: JSON.stringify([{ Id: r.id, ...rFields }]),
         });
         resourceIds.push(Number(r.id));
@@ -667,7 +1026,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         // Create new resource
         const resCreate = await fetch(`${baseUrl}/api/v2/tables/${TABLES.RESOURCES}/records`, {
           method: "POST",
-          headers: { "xc-token": token, "Content-Type": "application/json" },
+          headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
           body: JSON.stringify([rFields]),
         });
         if (resCreate.ok) {
@@ -684,13 +1043,19 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
   // Sync Messages
   const rawMessages = clampArray(payload.messages, MAX_MESSAGES);
   const messageIds = [];
+  const msgTypeCounters = {};
 
   for (const m of rawMessages) {
     const text = sanitizeString(m.text || m.name, 10000);
-    const type = sanitizeAllowedOption(m.type, ["Action", "Recommendation", "Quote"]) || "Recommendation";
+    const type = sanitizeAllowedOption(m.type, ["Action", "Issue", "Recommendation", "Quote"]) || "Recommendation";
 
     if (text) {
+      msgTypeCounters[type] = (msgTypeCounters[type] || 0) + 1;
+      const defaultTitle = `${type} ${msgTypeCounters[type]}`;
+      const title = sanitizeString(m.title, 250) || defaultTitle;
+
       const mFields = {
+        "Title": title,
         "Name": text,
         "Type": type,
       };
@@ -699,7 +1064,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         // Update existing message
         await fetch(`${baseUrl}/api/v2/tables/${TABLES.MESSAGES}/records`, {
           method: "PATCH",
-          headers: { "xc-token": token, "Content-Type": "application/json" },
+          headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
           body: JSON.stringify([{ Id: m.id, ...mFields }]),
         });
         messageIds.push(Number(m.id));
@@ -707,7 +1072,7 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
         // Create new message
         const msgCreateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.MESSAGES}/records`, {
           method: "POST",
-          headers: { "xc-token": token, "Content-Type": "application/json" },
+          headers: { "xc-token": activeWriteToken, "Content-Type": "application/json" },
           body: JSON.stringify([mFields]),
         });
         if (msgCreateRes.ok) {
@@ -722,12 +1087,12 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
 
   // Sync all relationship links using NocoDB's dedicated link endpoints
   await Promise.all([
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, currentLeadOrgIds, baseUrl, token),
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, finalCaseId, fundingOrgIds, currentFundingOrgIds, baseUrl, token),
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, currentInvolvedOrgIds, baseUrl, token),
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_PARTICIPANTS, finalCaseId, participantIds, currentPartIds, baseUrl, token),
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_RESOURCES, finalCaseId, resourceIds, currentResIds, baseUrl, token),
-    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_MESSAGES, finalCaseId, messageIds, currentMsgIds, baseUrl, token),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_LEAD_ORGS, finalCaseId, leadOrgIds, currentLeadOrgIds, baseUrl, activeWriteToken),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_FUNDING_ORGS, finalCaseId, fundingOrgIds, currentFundingOrgIds, baseUrl, activeWriteToken),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_INVOLVED_ORGS, finalCaseId, involvedOrgIds, currentInvolvedOrgIds, baseUrl, activeWriteToken),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_PARTICIPANTS, finalCaseId, participantIds, currentPartIds, baseUrl, activeWriteToken),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_RESOURCES, finalCaseId, resourceIds, currentResIds, baseUrl, activeWriteToken),
+    syncTableLinks(TABLES.CASES, LINK_FIELDS.CASE_MESSAGES, finalCaseId, messageIds, currentMsgIds, baseUrl, activeWriteToken),
   ]);
 
   return jsonResponse(
@@ -893,7 +1258,7 @@ function getCorsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Noco-Token",
   };
 }
 

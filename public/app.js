@@ -4,6 +4,8 @@
  * Multi-stage tabbed navigation with real-time stage completion tick-marks
  */
 
+const STAFF_TOKEN_STORAGE_KEY = "pave_nocodb_staff_token";
+
 const state = {
   isEditMode: false,
   caseId: null,
@@ -15,7 +17,14 @@ const state = {
   involvedOrganisations: [],
   participants: [],          // Array of participant group objects
   resources: [],             // Array of resource objects
-  messages: [],              // Array of message objects: { id, text, type }
+  messages: [],              // Array of message objects: { id, title, text, type }
+  staffToken: null,
+  staffUser: null,           // { id, email, displayName, role }
+  staffCanEdit: false,
+  comments: [],              // Array of NocoDB record comments
+  revisions: [],             // Array of NocoDB record revision audit entries
+  activityWarning: null,
+  activeDrawerTab: "comments",
 };
 
 const STAGES_CONFIG = [
@@ -226,39 +235,466 @@ function initStageNavigation() {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  initAboutLanding();
   initIntentToggle();
   initStageNavigation();
   initOrgPickers();
   initParticipantManager();
   initResourceManager();
   initMessagesManager();
+  initStaffAuthAndDrawer();
   initFormSubmission();
-  checkEditMode();
+  await restoreStaffSession();
+  await checkEditMode();
   renderStageTabs();
   renderMessagesTable();
   goToStage("stage-1");
 });
+
+function initAboutLanding() {
+  const startBtn = document.getElementById("startSubmissionBtn");
+  const backBtn = document.getElementById("backToAboutBtn");
+  const aboutSection = document.getElementById("aboutIntroSection");
+  const caseForm = document.getElementById("caseForm");
+
+  if (startBtn) {
+    startBtn.addEventListener("click", () => {
+      if (aboutSection) aboutSection.classList.add("hidden");
+      if (caseForm) caseForm.classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+
+  if (backBtn) {
+    backBtn.addEventListener("click", () => {
+      if (caseForm) caseForm.classList.add("hidden");
+      if (aboutSection) aboutSection.classList.remove("hidden");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }
+}
+
+/* -------------------------------------------------------------
+ * 0. NocoDB Staff Authentication & Comments/History Drawer
+ * ------------------------------------------------------------- */
+function getStaffHeaders(extraHeaders = {}) {
+  const headers = { ...extraHeaders };
+  if (state.staffToken) {
+    headers["X-Noco-Token"] = state.staffToken;
+  }
+  return headers;
+}
+
+async function restoreStaffSession() {
+  let savedToken = null;
+  try {
+    savedToken = sessionStorage.getItem(STAFF_TOKEN_STORAGE_KEY);
+  } catch (_) {}
+  if (!savedToken) return;
+
+  try {
+    const res = await fetch("/api/auth/me", {
+      headers: { "X-Noco-Token": savedToken },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.authenticated && data.user) {
+        state.staffToken = savedToken;
+        state.staffUser = data.user;
+        state.staffCanEdit = Boolean(data.canEdit);
+        updateStaffAuthUI();
+        return;
+      }
+    }
+  } catch (_) {}
+
+  // Clear invalid token
+  try {
+    sessionStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+  } catch (_) {}
+}
+
+function updateStaffAuthUI() {
+  const loginBtn = document.getElementById("staffLoginBtn");
+  const activeBadge = document.getElementById("staffActiveBadge");
+  const userLabel = document.getElementById("staffUserLabel");
+  const composerAttr = document.getElementById("composerAttribution");
+
+  if (state.staffUser) {
+    if (loginBtn) loginBtn.classList.add("hidden");
+    if (activeBadge) activeBadge.classList.remove("hidden");
+    if (userLabel) {
+      userLabel.textContent = `${state.staffUser.displayName} (${state.staffUser.role})`;
+    }
+    if (composerAttr) {
+      composerAttr.textContent = `Posting as ${state.staffUser.displayName} (${state.staffUser.email})`;
+    }
+  } else {
+    if (loginBtn) loginBtn.classList.remove("hidden");
+    if (activeBadge) activeBadge.classList.add("hidden");
+  }
+}
+
+function initStaffAuthAndDrawer() {
+  const loginBtn = document.getElementById("staffLoginBtn");
+  const logoutBtn = document.getElementById("staffLogoutBtn");
+  const loginModal = document.getElementById("staffLoginModal");
+  const tokenInput = document.getElementById("staffTokenInput");
+  const cancelLoginBtn = document.getElementById("cancelStaffLoginBtn");
+  const confirmLoginBtn = document.getElementById("confirmStaffLoginBtn");
+  const loginError = document.getElementById("staffLoginError");
+
+  const openDrawerBtn = document.getElementById("openDrawerBtn");
+  const closeDrawerBtn = document.getElementById("closeDrawerBtn");
+  const backdrop = document.getElementById("staffDrawerBackdrop");
+  const tabCommentsBtn = document.getElementById("drawerTabCommentsBtn");
+  const tabHistoryBtn = document.getElementById("drawerTabHistoryBtn");
+  const commentForm = document.getElementById("drawerCommentForm");
+
+  if (loginBtn && loginModal) {
+    loginBtn.addEventListener("click", () => {
+      if (tokenInput) tokenInput.value = "";
+      if (loginError) {
+        loginError.textContent = "";
+        loginError.classList.add("hidden");
+      }
+      loginModal.showModal();
+      setTimeout(() => tokenInput?.focus(), 50);
+    });
+  }
+
+  if (cancelLoginBtn && loginModal) {
+    cancelLoginBtn.addEventListener("click", () => loginModal.close());
+  }
+
+  if (confirmLoginBtn && loginModal) {
+    confirmLoginBtn.addEventListener("click", async () => {
+      const rawToken = (tokenInput?.value || "").trim();
+      if (!rawToken || rawToken.length < 10) {
+        if (loginError) {
+          loginError.textContent = "Please paste a valid NocoDB personal API token.";
+          loginError.classList.remove("hidden");
+        }
+        return;
+      }
+
+      confirmLoginBtn.disabled = true;
+      confirmLoginBtn.textContent = "Verifying...";
+      if (loginError) loginError.classList.add("hidden");
+
+      try {
+        const res = await fetch("/api/auth/me", {
+          headers: { "X-Noco-Token": rawToken },
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.authenticated) {
+          throw new Error(data.error || "Could not verify NocoDB API token.");
+        }
+
+        state.staffToken = rawToken;
+        state.staffUser = data.user;
+        state.staffCanEdit = Boolean(data.canEdit);
+        try {
+          sessionStorage.setItem(STAFF_TOKEN_STORAGE_KEY, rawToken);
+        } catch (_) {}
+
+        updateStaffAuthUI();
+        loginModal.close();
+
+        // Re-check edit mode in case we are viewing a Completed case or ?id=... URL
+        await checkEditMode();
+      } catch (err) {
+        if (loginError) {
+          loginError.textContent = err.message;
+          loginError.classList.remove("hidden");
+        }
+      } finally {
+        confirmLoginBtn.disabled = false;
+        confirmLoginBtn.textContent = "Verify & Sign In";
+      }
+    });
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      state.staffToken = null;
+      state.staffUser = null;
+      state.staffCanEdit = false;
+      state.comments = [];
+      state.revisions = [];
+      try {
+        sessionStorage.removeItem(STAFF_TOKEN_STORAGE_KEY);
+      } catch (_) {}
+      closeStaffDrawer();
+      updateStaffAuthUI();
+      await checkEditMode();
+    });
+  }
+
+  if (openDrawerBtn) {
+    openDrawerBtn.addEventListener("click", () => openStaffDrawer());
+  }
+  if (closeDrawerBtn) {
+    closeDrawerBtn.addEventListener("click", () => closeStaffDrawer());
+  }
+  if (backdrop) {
+    backdrop.addEventListener("click", () => closeStaffDrawer());
+  }
+
+  if (tabCommentsBtn) {
+    tabCommentsBtn.addEventListener("click", () => switchDrawerTab("comments"));
+  }
+  if (tabHistoryBtn) {
+    tabHistoryBtn.addEventListener("click", () => switchDrawerTab("history"));
+  }
+
+  if (commentForm) {
+    commentForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await submitCaseComment();
+    });
+  }
+}
+
+function openStaffDrawer(tab) {
+  if (tab) switchDrawerTab(tab);
+  const drawer = document.getElementById("staffDrawer");
+  const backdrop = document.getElementById("staffDrawerBackdrop");
+  if (drawer) drawer.classList.remove("hidden");
+  if (backdrop) backdrop.classList.remove("hidden");
+  renderDrawerContents();
+}
+
+function closeStaffDrawer() {
+  const drawer = document.getElementById("staffDrawer");
+  const backdrop = document.getElementById("staffDrawerBackdrop");
+  if (drawer) drawer.classList.add("hidden");
+  if (backdrop) backdrop.classList.add("hidden");
+}
+
+function switchDrawerTab(tab) {
+  state.activeDrawerTab = tab === "history" ? "history" : "comments";
+  const tabCommentsBtn = document.getElementById("drawerTabCommentsBtn");
+  const tabHistoryBtn = document.getElementById("drawerTabHistoryBtn");
+  const panelComments = document.getElementById("drawerPanelComments");
+  const panelHistory = document.getElementById("drawerPanelHistory");
+
+  if (state.activeDrawerTab === "comments") {
+    tabCommentsBtn?.classList.add("is-active");
+    tabCommentsBtn?.setAttribute("aria-selected", "true");
+    tabHistoryBtn?.classList.remove("is-active");
+    tabHistoryBtn?.setAttribute("aria-selected", "false");
+    panelComments?.classList.remove("hidden");
+    panelHistory?.classList.add("hidden");
+  } else {
+    tabHistoryBtn?.classList.add("is-active");
+    tabHistoryBtn?.setAttribute("aria-selected", "true");
+    tabCommentsBtn?.classList.remove("is-active");
+    tabCommentsBtn?.setAttribute("aria-selected", "false");
+    panelHistory?.classList.remove("hidden");
+    panelComments?.classList.add("hidden");
+  }
+}
+
+function renderDrawerContents() {
+  const countBadge = document.getElementById("drawerCountBadge");
+  const commentsTabCount = document.getElementById("drawerCommentsTabCount");
+  const historyTabCount = document.getElementById("drawerHistoryTabCount");
+  const drawerTitle = document.getElementById("drawerTitle");
+  const permNotice = document.getElementById("drawerPermissionNotice");
+  const commentsListEl = document.getElementById("drawerCommentsList");
+  const historyListEl = document.getElementById("drawerHistoryList");
+
+  const cCount = state.comments.length;
+  const hCount = state.revisions.length;
+
+  if (countBadge) countBadge.textContent = String(cCount);
+  if (commentsTabCount) commentsTabCount.textContent = String(cCount);
+  if (historyTabCount) historyTabCount.textContent = String(hCount);
+  if (drawerTitle && state.caseId) {
+    drawerTitle.textContent = `Case #${state.caseId} Activity`;
+  }
+
+  if (permNotice) {
+    if (state.activityWarning) {
+      permNotice.innerHTML = `
+        <strong>Token Scope Notice:</strong> ${escapeHtml(state.activityWarning)}
+        <div><small>To read/write comments via API, ensure your NocoDB API token has <code>commentList</code> and <code>commentRow</code> permissions enabled (or use an unrestricted personal API token).</small></div>
+      `;
+      permNotice.classList.remove("hidden");
+    } else {
+      permNotice.classList.add("hidden");
+      permNotice.innerHTML = "";
+    }
+  }
+
+  // Render Comments
+  if (commentsListEl) {
+    if (cCount === 0) {
+      commentsListEl.innerHTML = `<p class="empty-note">No comments on this case yet.</p>`;
+    } else {
+      commentsListEl.innerHTML = state.comments
+        .map(
+          (c) => `
+          <div class="drawer-comment-card ${c.resolved ? "is-resolved" : ""}">
+            <div class="comment-card-meta">
+              <strong class="comment-author">${escapeHtml(c.user || "NocoDB User")}</strong>
+              <span class="comment-date">${escapeHtml(formatTimestamp(c.createdAt))}</span>
+            </div>
+            <div class="comment-card-body">${escapeHtml(c.comment)}</div>
+          </div>
+        `
+        )
+        .join("");
+    }
+  }
+
+  // Render Revision History
+  if (historyListEl) {
+    if (hCount === 0) {
+      historyListEl.innerHTML = `<p class="empty-note">No revision history entries found for this case.</p>`;
+    } else {
+      historyListEl.innerHTML = state.revisions
+        .map((rev) => {
+          const hasFieldDiff = Boolean(rev.field);
+          const beforeStr = formatAuditValue(rev.oldValue);
+          const afterStr = formatAuditValue(rev.newValue);
+          return `
+            <div class="drawer-history-card">
+              <div class="history-card-meta">
+                <strong class="history-author">${escapeHtml(rev.user || "System")}</strong>
+                <span class="history-date">${escapeHtml(formatTimestamp(rev.createdAt))}</span>
+              </div>
+              ${
+                hasFieldDiff
+                  ? `<div class="history-field-name">Updated <code>${escapeHtml(rev.field)}</code></div>
+                     <div class="history-diff">
+                       <div class="diff-old"><span class="diff-label">Before:</span> ${escapeHtml(beforeStr)}</div>
+                       <div class="diff-new"><span class="diff-label">After:</span> ${escapeHtml(afterStr)}</div>
+                     </div>`
+                  : `<div class="history-desc">${escapeHtml(rev.description || rev.opSubType || rev.opType || "Record updated")}</div>`
+              }
+            </div>
+          `;
+        })
+        .join("");
+    }
+  }
+}
+
+async function submitCaseComment() {
+  if (!state.caseId || !state.staffToken) return;
+  const input = document.getElementById("newCommentInput");
+  const btn = document.getElementById("postCommentBtn");
+  const errEl = document.getElementById("commentSubmitError");
+
+  const commentText = (input?.value || "").trim();
+  if (!commentText) return;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Posting...";
+  }
+  if (errEl) errEl.classList.add("hidden");
+
+  try {
+    const res = await fetch("/api/case/comments", {
+      method: "POST",
+      headers: getStaffHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        caseId: state.caseId,
+        comment: commentText,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || "Failed to post comment.");
+    }
+
+    if (input) input.value = "";
+    state.comments = data.comments || [];
+    state.revisions = data.revisions || state.revisions;
+    state.activityWarning = data.permissionWarning || null;
+    renderDrawerContents();
+  } catch (err) {
+    if (errEl) {
+      errEl.textContent = err.message;
+      errEl.classList.remove("hidden");
+    }
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Post Comment";
+    }
+  }
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return "";
+  try {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return String(ts);
+  }
+}
+
+function formatAuditValue(val) {
+  if (val === null || val === undefined || val === "") return "(empty)";
+  if (typeof val === "object") {
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return String(val);
+    }
+  }
+  const str = String(val);
+  return str.length > 180 ? str.slice(0, 180) + "…" : str;
+}
 
 /* -------------------------------------------------------------
  * 1. Edit Mode Detection & Pre-population
  * ------------------------------------------------------------- */
 async function checkEditMode() {
   const params = new URLSearchParams(window.location.search);
-  const editKey = params.get("editKey") || params.get("editkey");
-  const caseId = params.get("id") || params.get("caseId");
+  const editKey = params.get("editKey") || params.get("editkey") || "";
+  const caseId = params.get("id") || params.get("caseId") || "";
 
-  if (!editKey) return;
+  if (!editKey && !caseId) return;
+
+  // Hide the initial About landing section and Back-to-About button when in edit mode
+  const aboutIntroEl = document.getElementById("aboutIntroSection");
+  if (aboutIntroEl) aboutIntroEl.classList.add("hidden");
+  const backToAboutRow = document.getElementById("backToAboutRow");
+  if (backToAboutRow) backToAboutRow.classList.add("hidden");
 
   const banner = document.getElementById("editBanner");
   const bannerTitle = document.getElementById("editBannerTitle");
   const bannerSubtitle = document.getElementById("editBannerSubtitle");
+  const staffBadge = document.getElementById("editBannerStaffBadge");
+  const workflowRow = document.getElementById("staffWorkflowRow");
+  const workflowSelect = document.getElementById("staffWorkflowStatus");
+  const openDrawerBtn = document.getElementById("openDrawerBtn");
 
-  if (editKey.length < 12) {
+  banner.classList.remove("error-banner");
+
+  if (!state.staffCanEdit && editKey.length < 12) {
     banner.classList.remove("hidden");
     banner.classList.add("error-banner");
     bannerTitle.textContent = "Edit Access Denied";
-    bannerSubtitle.textContent = "The provided EditKey is invalid (must be at least 12 characters).";
+    bannerSubtitle.textContent = caseId
+      ? "A valid EditKey is required to edit this case, or click 'Staff Sign In' above with your NocoDB account."
+      : "The provided EditKey is invalid (must be at least 12 characters).";
     document.getElementById("caseForm").classList.add("hidden");
     return;
   }
@@ -268,12 +704,14 @@ async function checkEditMode() {
   bannerSubtitle.textContent = "Fetching case details from database...";
 
   try {
-    let url = `/api/case?editKey=${encodeURIComponent(editKey)}`;
-    if (caseId) {
-      url += `&id=${encodeURIComponent(caseId)}`;
-    }
+    const queryParts = [];
+    if (editKey) queryParts.push(`editKey=${encodeURIComponent(editKey)}`);
+    if (caseId) queryParts.push(`id=${encodeURIComponent(caseId)}`);
+    const url = `/api/case?${queryParts.join("&")}`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, {
+      headers: getStaffHeaders(),
+    });
     const data = await res.json();
 
     if (!res.ok) {
@@ -287,14 +725,19 @@ async function checkEditMode() {
     const c = data.case;
     state.isEditMode = true;
     state.caseId = c.id;
-    state.editKey = c.editKey;
+    state.editKey = c.editKey || editKey;
+    state.comments = Array.isArray(c.comments) ? c.comments : [];
+    state.revisions = Array.isArray(c.revisions) ? c.revisions : [];
+    state.activityWarning = c.activityWarning || null;
 
     // Show form
     document.getElementById("caseForm").classList.remove("hidden");
 
-    // Hide 'What would you like to do' option when editing
+    // Hide 'What would you like to do' and intro card when editing
     const intentEl = document.getElementById("intentFieldset");
     if (intentEl) intentEl.classList.add("hidden");
+    const aboutIntroEl = document.getElementById("aboutIntroSection");
+    if (aboutIntroEl) aboutIntroEl.classList.add("hidden");
 
     // Always go to 'Provide full case book entry'
     state.submissionIntent = "full";
@@ -304,7 +747,7 @@ async function checkEditMode() {
 
     // Set hidden inputs
     document.getElementById("caseId").value = c.id;
-    document.getElementById("editKey").value = c.editKey;
+    document.getElementById("editKey").value = c.editKey || "";
 
     // Populate basic fields
     document.getElementById("submitterName").value = c.submitterName || "";
@@ -349,17 +792,37 @@ async function checkEditMode() {
     renderResourcesList(document.getElementById("resourcesList"));
 
     // Prepopulate messages
-    state.messages = (c.messages || []).map((m) => ({
-      id: m.id || null,
-      text: m.text || m.Name || "",
-      type: m.type || m.Type || "Recommendation",
-    }));
+    const msgTypeCounters = {};
+    state.messages = (c.messages || []).map((m) => {
+      const type = m.type || m.Type || "Recommendation";
+      msgTypeCounters[type] = (msgTypeCounters[type] || 0) + 1;
+      return {
+        id: m.id || null,
+        title: m.title || m.Title || `${type} ${msgTypeCounters[type]}`,
+        text: m.text || m.Name || "",
+        type,
+      };
+    });
     renderMessagesTable();
 
-    // Update banner and submit button
+    // Update banner and staff controls
     bannerTitle.textContent = `Editing Case #${c.id}: "${c.projectTitle}"`;
-    bannerSubtitle.textContent = `Status: ${c.workflowStatus}. Submitting will update the existing database record.`;
+    bannerSubtitle.textContent = `Status: ${c.workflowStatus || "Submission"}. Submitting will update the existing database record.`;
     document.getElementById("submitBtn").textContent = "Save Changes";
+
+    if (state.staffUser) {
+      staffBadge?.classList.remove("hidden");
+      openDrawerBtn?.classList.remove("hidden");
+      if (state.staffCanEdit && workflowRow && workflowSelect) {
+        workflowRow.classList.remove("hidden");
+        workflowSelect.value = c.workflowStatus || "Submission";
+      }
+      renderDrawerContents();
+    } else {
+      staffBadge?.classList.add("hidden");
+      openDrawerBtn?.classList.add("hidden");
+      workflowRow?.classList.add("hidden");
+    }
 
     renderStageTabs();
     goToStage("stage-1");
@@ -854,8 +1317,28 @@ function renderResourcesList(listEl) {
 }
 
 /* -------------------------------------------------------------
- * 6. Messages Manager (Outputs Stage: Actions, Recommendations, Quotes)
+ * 6. Messages Manager (Outputs Stage: Issues, Actions, Recommendations, Quotes)
  * ------------------------------------------------------------- */
+const AUTO_TITLE_PATTERN = /^(Issue|Action|Recommendation|Quote)\s+\d+$/i;
+
+function getNextMessageTitle(type) {
+  const targetType = type || "Recommendation";
+  const count = state.messages.filter((m) => m.type === targetType).length + 1;
+  return `${targetType} ${count}`;
+}
+
+function recalculateAutoTitles() {
+  const counts = {};
+  state.messages.forEach((m) => {
+    const t = m.type || "Recommendation";
+    counts[t] = (counts[t] || 0) + 1;
+    const trimmed = (m.title || "").trim();
+    if (!trimmed || AUTO_TITLE_PATTERN.test(trimmed)) {
+      m.title = `${t} ${counts[t]}`;
+    }
+  });
+}
+
 function initMessagesManager() {
   const pasteModal = document.getElementById("pasteMessagesModal");
   const pasteTitle = document.getElementById("pasteModalTitle");
@@ -865,6 +1348,7 @@ function initMessagesManager() {
   const cancelBtn = document.getElementById("cancelPasteBtn");
   const confirmBtn = document.getElementById("confirmPasteBtn");
 
+  const btnIssue = document.getElementById("addIssuesBtn");
   const btnAction = document.getElementById("addActionsBtn");
   const btnRec = document.getElementById("addRecommendationsBtn");
   const btnQuote = document.getElementById("addQuotesBtn");
@@ -875,6 +1359,7 @@ function initMessagesManager() {
     if (pasteTypeSelect) pasteTypeSelect.value = targetType;
     if (pasteTitle) {
       const titles = {
+        Issue: "Add Issues",
         Action: "Add Actions",
         Recommendation: "Add Recommendations",
         Quote: "Add Quotes",
@@ -893,6 +1378,7 @@ function initMessagesManager() {
     }
   }
 
+  if (btnIssue) btnIssue.addEventListener("click", () => openPasteModal("Issue"));
   if (btnAction) btnAction.addEventListener("click", () => openPasteModal("Action"));
   if (btnRec) btnRec.addEventListener("click", () => openPasteModal("Recommendation"));
   if (btnQuote) btnQuote.addEventListener("click", () => openPasteModal("Quote"));
@@ -928,6 +1414,7 @@ function initMessagesManager() {
       lines.forEach((line) => {
         state.messages.push({
           id: null,
+          title: getNextMessageTitle(selectedType),
           text: line,
           type: selectedType,
         });
@@ -938,6 +1425,13 @@ function initMessagesManager() {
       updateStageProgress();
     });
   }
+}
+
+function getMessageTypeClass(type) {
+  if (type === "Issue") return "type-issue";
+  if (type === "Action") return "type-action";
+  if (type === "Quote") return "type-quote";
+  return "type-recommendation";
 }
 
 function renderMessagesTable() {
@@ -952,7 +1446,7 @@ function renderMessagesTable() {
     empty.innerHTML = `
       <div class="empty-icon">📝</div>
       <p class="empty-title">No outputs added yet</p>
-      <p class="empty-hint">Click <strong>+ Add actions</strong>, <strong>+ Add recommendations</strong>, or <strong>+ Add quotes</strong> above to bulk paste entries, or add a single line directly.</p>
+      <p class="empty-hint">Click <strong>+ Add issues</strong>, <strong>+ Add actions</strong>, <strong>+ Add recommendations</strong>, or <strong>+ Add quotes</strong> above to bulk paste entries, or add a single line directly.</p>
       <button type="button" class="btn-secondary btn-sm" id="emptyAddSingleBtn">+ Add single message</button>
     `;
     container.appendChild(empty);
@@ -960,7 +1454,13 @@ function renderMessagesTable() {
     const emptyAddBtn = empty.querySelector("#emptyAddSingleBtn");
     if (emptyAddBtn) {
       emptyAddBtn.addEventListener("click", () => {
-        state.messages.push({ id: null, text: "", type: "Recommendation" });
+        const defaultType = "Recommendation";
+        state.messages.push({
+          id: null,
+          title: getNextMessageTitle(defaultType),
+          text: "",
+          type: defaultType,
+        });
         renderMessagesTable();
         const inputs = container.querySelectorAll(".msg-text-input");
         if (inputs.length) inputs[inputs.length - 1].focus();
@@ -971,6 +1471,7 @@ function renderMessagesTable() {
   }
 
   // Counts
+  const issueCount = state.messages.filter((m) => m.type === "Issue").length;
   const actionCount = state.messages.filter((m) => m.type === "Action").length;
   const recCount = state.messages.filter((m) => m.type === "Recommendation").length;
   const quoteCount = state.messages.filter((m) => m.type === "Quote").length;
@@ -980,15 +1481,19 @@ function renderMessagesTable() {
 
   let rowsHtml = "";
   state.messages.forEach((msg, idx) => {
-    const typeClass = msg.type === "Action" ? "type-action" : msg.type === "Recommendation" ? "type-recommendation" : "type-quote";
+    const typeClass = getMessageTypeClass(msg.type);
     rowsHtml += `
       <tr data-index="${idx}">
         <td class="col-type">
           <select class="msg-type-select ${typeClass}" data-index="${idx}">
+            <option value="Issue" ${msg.type === "Issue" ? "selected" : ""}>Issue</option>
             <option value="Action" ${msg.type === "Action" ? "selected" : ""}>Action</option>
             <option value="Recommendation" ${msg.type === "Recommendation" ? "selected" : ""}>Recommendation</option>
             <option value="Quote" ${msg.type === "Quote" ? "selected" : ""}>Quote</option>
           </select>
+        </td>
+        <td class="col-title">
+          <input type="text" class="msg-title-input" data-index="${idx}" value="${escapeHtml(msg.title || "")}" placeholder="e.g. ${escapeHtml(msg.type || "Recommendation")} 1">
         </td>
         <td class="col-content">
           <textarea class="msg-text-input" data-index="${idx}" rows="2" placeholder="Enter message text...">${escapeHtml(msg.text)}</textarea>
@@ -1004,9 +1509,10 @@ function renderMessagesTable() {
     <table class="messages-table">
       <thead>
         <tr>
-          <th style="width: 170px;">Type</th>
+          <th style="width: 155px;">Type</th>
+          <th style="width: 190px;">Short Title</th>
           <th>Message Content (Inline Editable)</th>
-          <th style="width: 50px; text-align: center;"></th>
+          <th style="width: 45px; text-align: center;"></th>
         </tr>
       </thead>
       <tbody>
@@ -1016,6 +1522,7 @@ function renderMessagesTable() {
     <div class="messages-table-footer">
       <button type="button" class="btn-secondary btn-sm" id="tableAddSingleBtn">+ Add single message</button>
       <div class="messages-counts-summary">
+        <span class="count-pill pill-issue">${issueCount} Issues</span>
         <span class="count-pill pill-action">${actionCount} Actions</span>
         <span class="count-pill pill-rec">${recCount} Recommendations</span>
         <span class="count-pill pill-quote">${quoteCount} Quotes</span>
@@ -1027,6 +1534,17 @@ function renderMessagesTable() {
   container.appendChild(tableWrapper);
 
   // Wire events
+  const titleInputs = tableWrapper.querySelectorAll(".msg-title-input");
+  titleInputs.forEach((inp) => {
+    inp.addEventListener("input", (e) => {
+      const idx = parseInt(e.target.dataset.index, 10);
+      if (!isNaN(idx) && state.messages[idx]) {
+        state.messages[idx].title = e.target.value;
+        updateStageProgress();
+      }
+    });
+  });
+
   const textInputs = tableWrapper.querySelectorAll(".msg-text-input");
   textInputs.forEach((ta) => {
     ta.addEventListener("input", (e) => {
@@ -1043,8 +1561,17 @@ function renderMessagesTable() {
     sel.addEventListener("change", (e) => {
       const idx = parseInt(e.target.dataset.index, 10);
       if (!isNaN(idx) && state.messages[idx]) {
-        state.messages[idx].type = e.target.value;
-        sel.className = `msg-type-select ${e.target.value === "Action" ? "type-action" : e.target.value === "Recommendation" ? "type-recommendation" : "type-quote"}`;
+        const newType = e.target.value;
+        state.messages[idx].type = newType;
+        sel.className = `msg-type-select ${getMessageTypeClass(newType)}`;
+        recalculateAutoTitles();
+        tableWrapper.querySelectorAll(".msg-title-input").forEach((inp) => {
+          const i = parseInt(inp.dataset.index, 10);
+          if (!isNaN(i) && state.messages[i]) {
+            inp.value = state.messages[i].title || "";
+            inp.placeholder = `e.g. ${state.messages[i].type || "Recommendation"} 1`;
+          }
+        });
         updateMessagesSummaryPills(container);
         updateStageProgress();
       }
@@ -1057,6 +1584,7 @@ function renderMessagesTable() {
       const idx = parseInt(e.target.dataset.index, 10);
       if (!isNaN(idx)) {
         state.messages.splice(idx, 1);
+        recalculateAutoTitles();
         renderMessagesTable();
         updateStageProgress();
       }
@@ -1066,7 +1594,13 @@ function renderMessagesTable() {
   const tableAddBtn = tableWrapper.querySelector("#tableAddSingleBtn");
   if (tableAddBtn) {
     tableAddBtn.addEventListener("click", () => {
-      state.messages.push({ id: null, text: "", type: "Recommendation" });
+      const defaultType = "Recommendation";
+      state.messages.push({
+        id: null,
+        title: getNextMessageTitle(defaultType),
+        text: "",
+        type: defaultType,
+      });
       renderMessagesTable();
       const updatedInputs = container.querySelectorAll(".msg-text-input");
       if (updatedInputs.length) {
@@ -1080,15 +1614,18 @@ function renderMessagesTable() {
 }
 
 function updateMessagesSummaryPills(container) {
+  const issueCount = state.messages.filter((m) => m.type === "Issue").length;
   const actionCount = state.messages.filter((m) => m.type === "Action").length;
   const recCount = state.messages.filter((m) => m.type === "Recommendation").length;
   const quoteCount = state.messages.filter((m) => m.type === "Quote").length;
 
+  const pillIssue = container.querySelector(".pill-issue");
   const pillAction = container.querySelector(".pill-action");
   const pillRec = container.querySelector(".pill-rec");
   const pillQuote = container.querySelector(".pill-quote");
   const totalEl = container.querySelector(".count-total");
 
+  if (pillIssue) pillIssue.textContent = `${issueCount} Issues`;
   if (pillAction) pillAction.textContent = `${actionCount} Actions`;
   if (pillRec) pillRec.textContent = `${recCount} Recommendations`;
   if (pillQuote) pillQuote.textContent = `${quoteCount} Quotes`;
@@ -1174,11 +1711,14 @@ function initFormSubmission() {
         publishedResources: getCheckedValues("publishedResources"),
         resources: state.resources,
         photosAvailable: getCheckedValues("photosAvailable"),
+        workflowStatus: state.staffCanEdit
+          ? document.getElementById("staffWorkflowStatus")?.value || undefined
+          : undefined,
       };
 
       const res = await fetch("/api/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getStaffHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload),
       });
 
@@ -1190,18 +1730,45 @@ function initFormSubmission() {
 
       if (state.isEditMode) {
         // Edit mode: show confirmation above the form
+        const updatedStatus = payload.workflowStatus;
+        if (updatedStatus) {
+          const bannerSubtitle = document.getElementById("editBannerSubtitle");
+          if (bannerSubtitle) {
+            bannerSubtitle.textContent = `Status: ${updatedStatus}. Submitting will update the existing database record.`;
+          }
+        }
         statusEl.className = "status-msg success";
         statusEl.innerHTML = `
           <h3>Changes Saved!</h3>
           <p>${escapeHtml(result.message || "Your case record was updated successfully.")}</p>
-          <p><small>You can make further edits anytime using your edit link until the submission is published.</small></p>
+          <p><small>${
+            state.staffCanEdit
+              ? "Changes were saved using your NocoDB editor credentials."
+              : "You can make further edits anytime using your edit link until the submission is published."
+          }</small></p>
         `;
+        if (state.staffUser && state.caseId) {
+          try {
+            const actRes = await fetch(`/api/case/comments?id=${encodeURIComponent(state.caseId)}`, {
+              headers: getStaffHeaders(),
+            });
+            if (actRes.ok) {
+              const actData = await actRes.json();
+              state.comments = actData.comments || state.comments;
+              state.revisions = actData.revisions || state.revisions;
+              state.activityWarning = actData.permissionWarning || null;
+              renderDrawerContents();
+            }
+          } catch (_) {}
+        }
         window.scrollTo({ top: 0, behavior: "smooth" });
       } else {
         // New entry created: hide the form and show the dedicated success screen with edit link
         form.classList.add("hidden");
         const editBanner = document.getElementById("editBanner");
         if (editBanner) editBanner.classList.add("hidden");
+        const aboutIntroEl = document.getElementById("aboutIntroSection");
+        if (aboutIntroEl) aboutIntroEl.classList.add("hidden");
 
         const editKey = result.editKey || state.editKey || "";
         const editUrl = `${window.location.origin}${window.location.pathname}?id=${encodeURIComponent(result.caseId)}&editKey=${encodeURIComponent(editKey)}`;
