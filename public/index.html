@@ -4,6 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Share a Casebook Entry - Public AI Voices & Engagement (PAVE)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -13,8 +18,14 @@
         <h1>Public AI Voices &amp; Engagement (PAVE) Case Book</h1>
         <p class="subtitle">Contribute to the casebook documenting public engagement on AI.</p>
       </div>
-      <div class="staff-auth-bar" id="staffAuthBar">
-        <button type="button" id="staffLoginBtn" class="btn-staff-auth">Staff Sign In</button>
+      <div class="header-right-panel">
+        <nav class="top-header-menu" id="staffAuthBar" aria-label="Top menu">
+          <button type="button" id="topMenuAboutBtn" class="top-menu-link is-active" aria-pressed="true">About</button>
+          <span class="top-menu-divider" aria-hidden="true"></span>
+          <a href="/" id="topMenuNewEntryBtn" class="top-menu-link">New entry</a>
+          <span class="top-menu-divider" aria-hidden="true"></span>
+          <button type="button" id="staffLoginBtn" class="top-menu-link">Sign in</button>
+        </nav>
         <div id="staffActiveBadge" class="staff-active-badge hidden">
           <span class="staff-dot" aria-hidden="true"></span>
           <span id="staffUserLabel">Signed in</span>
@@ -28,26 +39,43 @@
       <div class="edit-banner-content">
         <div class="edit-banner-badges">
           <span class="badge" id="editBannerBadge">Edit Mode</span>
-          <span class="badge badge-staff hidden" id="editBannerStaffBadge">NocoDB Editor</span>
+          <span class="edit-autosave-pill is-saved" id="editBannerSaveStatus" role="status" aria-live="polite">
+            <span class="autosave-dot" aria-hidden="true"></span>
+            <span id="editBannerSaveStatusText">All changes saved</span>
+          </span>
         </div>
         <strong id="editBannerTitle">Editing Case</strong>
-        <p id="editBannerSubtitle">You are modifying an existing case entry. Submitting will update the database record.</p>
+        <p id="editBannerSubtitle">You are modifying an existing case entry. Changes are saved automatically as you move between stages.</p>
         <div id="staffWorkflowRow" class="staff-workflow-row hidden">
-          <label for="staffWorkflowStatus">Workflow Status:</label>
-          <select id="staffWorkflowStatus" class="staff-workflow-select">
-            <option value="Nomination">Nomination</option>
-            <option value="Submission">Submission</option>
-            <option value="Under Review">Under Review</option>
-            <option value="Completed">Completed</option>
-            <option value="Rejected">Rejected</option>
-          </select>
+          <div class="staff-control-item">
+            <label for="staffWorkflowStatus">Workflow Status:</label>
+            <select id="staffWorkflowStatus" class="staff-workflow-select">
+              <option value="Nomination">Nomination</option>
+              <option value="Submission">Submission</option>
+              <option value="Draft">Draft</option>
+              <option value="Under Review">Under Review</option>
+              <option value="Completed">Completed</option>
+              <option value="Rejected">Rejected</option>
+              <option value="Duplicate">Duplicate</option>
+            </select>
+          </div>
+          <span class="staff-control-divider" aria-hidden="true"></span>
+          <div class="staff-control-item">
+            <label for="staffAssignedTo">Assigned to:</label>
+            <select id="staffAssignedTo" class="staff-workflow-select">
+              <option value="">Unassigned</option>
+            </select>
+          </div>
+          <span class="staff-control-divider" aria-hidden="true"></span>
+          <button type="button" id="openDrawerBtn" class="btn-staff-drawer-toggle" aria-expanded="false" title="Toggle Comments &amp; History drawer">
+            💬 Comments &amp; History <span id="drawerCountBadge" class="drawer-count-badge">0</span>
+          </button>
         </div>
       </div>
       <div class="edit-banner-actions">
-        <button type="button" id="openDrawerBtn" class="btn-open-drawer hidden">
-          💬 Comments &amp; History <span id="drawerCountBadge" class="drawer-count-badge">0</span>
+        <button type="button" id="editSaveNowBtn" class="btn-save-now hidden" title="Save all changes now">
+          Save now
         </button>
-        <a href="/" class="btn-cancel-edit">Switch to New Submission</a>
       </div>
     </div>
 
@@ -167,8 +195,16 @@
       <!-- Stage Tabs & Progress Bar -->
       <div class="stage-nav-container">
         <div class="stage-progress-header">
-          <span class="stage-progress-label" id="stageProgressLabel">Stage 1 of 7</span>
-          <span class="stage-progress-percent" id="stageProgressPercent">0% Completed</span>
+          <div class="stage-progress-meta">
+            <span class="stage-progress-label" id="stageProgressLabel">Stage 1 of 7</span>
+            <span class="stage-progress-percent" id="stageProgressPercent">0% Completed</span>
+          </div>
+          <div class="stage-preview-toolbar">
+            <span class="edit-autosave-pill edit-autosave-pill-compact hidden is-saved" id="stageNavSaveStatus" role="status" aria-live="polite">
+              <span class="autosave-dot" aria-hidden="true"></span>
+              <span id="stageNavSaveStatusText">Saved</span>
+            </span>
+          </div>
         </div>
         <div class="stage-progress-track">
           <div class="stage-progress-fill" id="stageProgressFill"></div>
@@ -180,6 +216,7 @@
         </nav>
       </div>
 
+      <div class="form-workspace-grid" id="formWorkspaceGrid">
       <div class="stages-container">
         <!-- Stage 1: About You -->
         <div class="form-stage" id="stage-1" role="tabpanel" aria-labelledby="tab-stage-1">
@@ -441,30 +478,80 @@
               </div>
 
               <div class="form-group">
-                <label>Resource Links / References</label>
+                <label>Supporting Resources (Links &amp; Uploaded Files)</label>
+                <small class="field-hint">Add links to online reports, media coverage, or videos, or upload resource documents (PDF, Word, slides, spreadsheets, images) directly.</small>
                 <div id="resourcesList" class="repeater-list"></div>
-                <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource Link</button>
+                <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource (Link or File)</button>
               </div>
 
               <div class="form-group">
                 <label>Photos Available?</label>
                 <div class="checkbox-group">
-                  <label><input type="checkbox" name="photosAvailable" value="I have photos from this project to upload"> I have photos from this project to upload</label>
+                  <label><input type="checkbox" name="photosAvailable" value="I have photos from this project to upload" id="photosAvailableUploadCheck"> I have photos from this project to upload</label>
                   <label><input type="checkbox" name="photosAvailable" value="Photos may be available from this project - contact me later"> Photos may be available from this project - contact me later</label>
                   <label><input type="checkbox" name="photosAvailable" value="There are no photos available from this project"> There are no photos available from this project</label>
                 </div>
               </div>
+
+              <div class="form-group photo-upload-section" id="photoUploadSection">
+                <label for="photoFileInput">Project Photos &amp; Images</label>
+                <p class="field-hint">
+                  Upload photos from the engagement events, workshops, or activities (JPEG, PNG, WebP, GIF, AVIF &mdash; up to 20 MB per file).
+                  By uploading photos, you confirm that appropriate consent is in place for them to be published online in association with this case study.
+                </p>
+                <div class="file-upload-dropzone" id="photoUploadDropzone">
+                  <input
+                    type="file"
+                    id="photoFileInput"
+                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                    multiple
+                    class="file-input-hidden"
+                  >
+                  <div class="dropzone-content">
+                    <span class="dropzone-icon" aria-hidden="true">📷</span>
+                    <div class="dropzone-text">
+                      <strong>Click to choose photos</strong> or drag and drop image files here
+                      <span>JPEG, PNG, WebP, GIF, AVIF (max 20 MB each)</span>
+                    </div>
+                    <button type="button" class="btn-secondary btn-sm" id="triggerPhotoInputBtn">Select Photos</button>
+                  </div>
+                </div>
+                <div id="photoUploadStatus" class="upload-status-bar hidden" role="status" aria-live="polite"></div>
+                <div id="photosGalleryList" class="photos-gallery-grid"></div>
+              </div>
             </fieldset>
             <div class="stage-actions">
               <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back: Outputs</button>
-              <button type="button" class="btn-primary btn-next-stage" data-target="stage-7">Next: Review &amp; Submit &rarr;</button>
+              <button type="button" id="stage6NextBtn" class="btn-primary btn-next-stage" data-target="stage-7">Next: Review &amp; Submit &rarr;</button>
             </div>
           </div>
         </div>
 
-        <!-- Stage 7: Consent & Submission -->
+        <!-- Stage 7: Review & Submit / Preview & Save -->
         <div class="form-stage hidden" id="stage-7" role="tabpanel" aria-labelledby="tab-stage-7">
-          <fieldset>
+          <div id="livePreviewMountStage7" class="stage7-preview-mount">
+            <div id="paveLivePreviewRoot" class="pave-live-preview">
+              <div class="pave-preview-chrome">
+                <div class="pave-preview-chrome-title">
+                  <span class="pave-preview-badge">Live Case Book Preview</span>
+                  <span class="pave-preview-hint">Updates automatically as you type</span>
+                </div>
+                <div class="pave-preview-mode-switcher" role="tablist" aria-label="Preview format">
+                  <button type="button" class="pave-mode-btn is-active" data-preview-mode="page" role="tab" aria-selected="true">
+                    Case Study Page
+                  </button>
+                  <button type="button" class="pave-mode-btn" data-preview-mode="card" role="tab" aria-selected="false">
+                    Browse Card
+                  </button>
+                </div>
+              </div>
+              <div id="pavePreviewViewport" class="pave-preview-viewport">
+                <!-- Rendered dynamically by preview.js -->
+              </div>
+            </div>
+          </div>
+
+          <fieldset id="stage7ConsentFieldset">
             <legend>Review &amp; Submit</legend>
             <p class="consent-text">
               By submitting this entry, I confirm that:
@@ -487,6 +574,7 @@
             <button type="submit" id="submitBtn" class="btn-primary">Submit Case Entry</button>
           </div>
         </div>
+      </div>
       </div>
 
       <div id="statusMessage" class="status-msg hidden"></div>
@@ -549,9 +637,15 @@
             <input type="text" id="p_targetPopulation" placeholder="e.g. Young people aged 18-25, healthcare workers">
           </div>
           <div class="form-group col">
-            <label for="p_geographicOrigin">Where were participants from?</label>
+            <label for="p_geographicOrigin">Where were participants from? (Description)</label>
             <input type="text" id="p_geographicOrigin" placeholder="e.g. Greater Manchester, UK-wide">
           </div>
+        </div>
+
+        <div class="form-group">
+          <label>Linked Map Locations (for Case Book Map)</label>
+          <div id="p_locationsPicker" class="org-picker location-picker"></div>
+          <small>Search and select cities, regions, or countries to plot this participant cohort on the interactive map, or add a new location.</small>
         </div>
 
         <div class="form-group">
@@ -598,7 +692,10 @@
     <!-- Resource Modal / Dialog -->
     <dialog id="resourceModal">
       <form id="resourceDialogForm" method="dialog">
-        <h3 id="resourceModalTitle">Add Resource Link</h3>
+        <h3 id="resourceModalTitle">Add Supporting Resource</h3>
+        <p class="modal-instruction">
+          Provide an external link (URL), upload one or more files (such as a PDF report, slide deck, or document), or both.
+        </p>
 
         <div class="form-group">
           <label for="r_title">Resource Title *</label>
@@ -606,8 +703,31 @@
         </div>
 
         <div class="form-group">
-          <label for="r_url">Resource URL *</label>
-          <input type="url" id="r_url" required placeholder="https://example.org/report.pdf">
+          <label for="r_url">Resource URL <span class="label-optional">(optional if uploading a file)</span></label>
+          <input type="url" id="r_url" placeholder="https://example.org/report.pdf">
+        </div>
+
+        <div class="form-group">
+          <label for="r_fileInput">Upload File(s) <span class="label-optional">(optional if URL is provided)</span></label>
+          <div class="file-upload-dropzone file-upload-dropzone-sm" id="r_fileDropzone">
+            <input
+              type="file"
+              id="r_fileInput"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt,.odp,.ods,image/jpeg,image/png,image/webp,image/gif,image/avif"
+              multiple
+              class="file-input-hidden"
+            >
+            <div class="dropzone-content">
+              <span class="dropzone-icon" aria-hidden="true">📎</span>
+              <div class="dropzone-text">
+                <strong>Choose file(s)</strong> or drag and drop here
+                <span>PDF, Word, PowerPoint, Excel, CSV, TXT, or Images (max 20 MB)</span>
+              </div>
+              <button type="button" class="btn-secondary btn-sm" id="r_triggerFileBtn">Browse Files</button>
+            </div>
+          </div>
+          <div id="r_uploadStatus" class="upload-status-bar hidden" role="status" aria-live="polite"></div>
+          <div id="r_attachmentsList" class="modal-attachments-list"></div>
         </div>
 
         <div class="form-group">
@@ -621,6 +741,8 @@
             <option value="Evaluation">Evaluation</option>
             <option value="Video">Video</option>
             <option value="Academic paper or presentation">Academic paper or presentation</option>
+            <option value="Photo or image">Photo or image</option>
+            <option value="Citation">Citation</option>
             <option value="Other">Other</option>
           </select>
         </div>
@@ -634,6 +756,8 @@
           <label for="r_license">License</label>
           <input type="text" id="r_license" placeholder="e.g. CC-BY 4.0">
         </div>
+
+        <div id="r_modalError" class="drawer-inline-error hidden" style="margin-bottom: 0.75rem;"></div>
 
         <div class="dialog-actions">
           <button type="button" id="cancelResourceBtn" class="btn-secondary">Cancel</button>
@@ -747,6 +871,7 @@
     </aside>
   </div>
 
+  <script src="preview.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
