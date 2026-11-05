@@ -130,6 +130,26 @@ export default {
         return await handleSearchLocations(url, nocodbBaseUrl, nocodbToken, corsHeaders);
       }
 
+      // 1c. Update organisation details (Staff only)
+      if (url.pathname === "/api/organisations/update" && (request.method === "POST" || request.method === "PATCH")) {
+        return await handleUpdateOrganisation(request, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
+      // 1d. Update location details (Staff only)
+      if (url.pathname === "/api/locations/update" && (request.method === "POST" || request.method === "PATCH")) {
+        return await handleUpdateLocation(request, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
+      // 1e. Kanban cases listing endpoint (Staff only)
+      if (url.pathname === "/api/kanban/cases" && request.method === "GET") {
+        return await handleGetKanbanCases(request, url, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
+      // 1f. Kanban workflow/assignee update endpoint (Staff only)
+      if (url.pathname === "/api/kanban/case/workflow" && (request.method === "POST" || request.method === "PATCH")) {
+        return await handleUpdateKanbanWorkflow(request, nocodbBaseUrl, nocodbToken, corsHeaders);
+      }
+
       // 2. Staff authentication check endpoint
       if (url.pathname === "/api/auth/me" && request.method === "GET") {
         return await handleAuthMe(request, nocodbBaseUrl, corsHeaders);
@@ -157,6 +177,11 @@ export default {
 
       // 6. Static asset serving when deployed as Cloudflare Worker with [assets]
       if (env.ASSETS) {
+        if (url.pathname === "/kanban") {
+          const kanbanUrl = new URL(request.url);
+          kanbanUrl.pathname = "/kanban.html";
+          return await env.ASSETS.fetch(new Request(kanbanUrl, request));
+        }
         return await env.ASSETS.fetch(request);
       }
 
@@ -270,6 +295,220 @@ function formatOrg(raw, locMap = null) {
 }
 
 /**
+ * Handle updating an organisation record in NocoDB (Staff only)
+ */
+async function handleUpdateOrganisation(request, baseUrl, token, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated || !staff.canEdit) {
+    return jsonResponse({ error: "Staff edit permissions required." }, 401, corsHeaders);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body." }, 400, corsHeaders);
+  }
+
+  const orgId = Number(body.id);
+  if (!orgId || isNaN(orgId)) {
+    return jsonResponse({ error: "Valid organisation ID is required." }, 400, corsHeaders);
+  }
+
+  const name = sanitizeString(body.name, 200);
+  if (!name) {
+    return jsonResponse({ error: "Organisation title cannot be empty." }, 400, corsHeaders);
+  }
+
+  const website = sanitizeString(body.website, 255);
+  const rawTypes = Array.isArray(body.type)
+    ? body.type
+    : typeof body.type === "string" && body.type.trim()
+    ? body.type.split(",").map((s) => s.trim())
+    : [];
+
+  const ALLOWED_TYPES = new Set([
+    "Private sector",
+    "Funder",
+    "Public sector",
+    "Non-profit",
+    "Research",
+    "Individual Donor",
+  ]);
+  const types = rawTypes.filter((t) => ALLOWED_TYPES.has(t));
+
+  const writeToken = token || staff.userToken;
+
+  const patchPayload = {
+    Id: orgId,
+    Name: name,
+    "Website address": website || null,
+    "Organisation type": types,
+  };
+
+  const patchRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.ORGANISATIONS}/records`, {
+    method: "PATCH",
+    headers: {
+      "xc-token": writeToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([patchPayload]),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error("Failed to update organisation:", patchRes.status, errText);
+    return jsonResponse({ error: "Failed to update organisation record in database." }, 502, corsHeaders);
+  }
+
+  // Handle Main Location link if specified
+  if (body.mainLocation !== undefined || body.mainLocationId !== undefined) {
+    try {
+      const getOrgRes = await fetch(
+        `${baseUrl}/api/v2/tables/${TABLES.ORGANISATIONS}/records/${orgId}?fields=Id,Main Location`,
+        { headers: { "xc-token": writeToken } }
+      );
+      let currentLocIds = [];
+      if (getOrgRes.ok) {
+        const existingData = await getOrgRes.json();
+        currentLocIds = extractIds(existingData["Main Location"]);
+      }
+
+      let desiredLocIds = [];
+      if (body.mainLocation && typeof body.mainLocation === "object") {
+        desiredLocIds = await resolveLocations([body.mainLocation], baseUrl, writeToken);
+      } else if (body.mainLocationId && !isNaN(Number(body.mainLocationId))) {
+        desiredLocIds = [Number(body.mainLocationId)];
+      }
+
+      await syncTableLinks(
+        TABLES.ORGANISATIONS,
+        LINK_FIELDS.ORG_MAIN_LOCATION,
+        orgId,
+        desiredLocIds,
+        currentLocIds,
+        baseUrl,
+        writeToken
+      );
+    } catch (locErr) {
+      console.warn("Failed to sync organisation Main Location link:", locErr);
+    }
+  }
+
+  // Fetch updated organisation to return fresh formatted object
+  try {
+    const freshRes = await fetch(
+      `${baseUrl}/api/v2/tables/${TABLES.ORGANISATIONS}/records/${orgId}?fields=Id,Name,Website address,Organisation type,Main Location`,
+      { headers: { "xc-token": writeToken } }
+    );
+    if (freshRes.ok) {
+      const freshData = await freshRes.json();
+      const locIds = extractIds(freshData["Main Location"]);
+      const locMap = await fetchLocationMap(locIds, baseUrl, writeToken);
+      const formatted = formatOrg(freshData, locMap);
+      return jsonResponse({ success: true, organisation: formatted }, 200, corsHeaders);
+    }
+  } catch (_) {}
+
+  return jsonResponse(
+    {
+      success: true,
+      organisation: {
+        id: orgId,
+        name,
+        website,
+        type: types,
+        locations: [],
+      },
+    },
+    200,
+    corsHeaders
+  );
+}
+
+/**
+ * Handle updating a location record in NocoDB (Staff only)
+ */
+async function handleUpdateLocation(request, baseUrl, token, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated || !staff.canEdit) {
+    return jsonResponse({ error: "Staff edit permissions required." }, 401, corsHeaders);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body." }, 400, corsHeaders);
+  }
+
+  const locId = Number(body.id);
+  if (!locId || isNaN(locId)) {
+    return jsonResponse({ error: "Valid location ID is required." }, 400, corsHeaders);
+  }
+
+  const name = sanitizeString(body.name, 200);
+  if (!name) {
+    return jsonResponse({ error: "Location name cannot be empty." }, 400, corsHeaders);
+  }
+
+  let latitude =
+    body.latitude !== undefined && body.latitude !== null && body.latitude !== ""
+      ? Number(body.latitude)
+      : null;
+  if (isNaN(latitude)) latitude = null;
+
+  let longitude =
+    body.longitude !== undefined && body.longitude !== null && body.longitude !== ""
+      ? Number(body.longitude)
+      : null;
+  if (isNaN(longitude)) longitude = null;
+
+  const rawCountryCode = sanitizeString(body.countryCode || "", 10);
+  const countryCode = rawCountryCode ? rawCountryCode.toUpperCase() : null;
+
+  const writeToken = token || staff.userToken;
+
+  const patchPayload = {
+    Id: locId,
+    Name: name,
+    Latitude: latitude,
+    Longitude: longitude,
+    "Country Code": countryCode,
+  };
+
+  const patchRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.LOCATIONS}/records`, {
+    method: "PATCH",
+    headers: {
+      "xc-token": writeToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify([patchPayload]),
+  });
+
+  if (!patchRes.ok) {
+    const errText = await patchRes.text();
+    console.error("Failed to update location:", patchRes.status, errText);
+    return jsonResponse({ error: "Failed to update location record in database." }, 502, corsHeaders);
+  }
+
+  return jsonResponse(
+    {
+      success: true,
+      location: {
+        id: locId,
+        name,
+        latitude,
+        longitude,
+        countryCode: countryCode || "",
+      },
+    },
+    200,
+    corsHeaders
+  );
+}
+
+/**
  * Handle searching or geocoding locations in NocoDB Locations table
  */
 async function handleSearchLocations(url, baseUrl, token, corsHeaders) {
@@ -291,10 +530,12 @@ async function handleSearchLocations(url, baseUrl, token, corsHeaders) {
   }
 
   if (wantGeocode) {
-    const geo = await geocodeLocationName(query);
+    const countryCode = url.searchParams.get("countryCode") || url.searchParams.get("cc") || "";
+    const geo = await geocodeLocationName(query, countryCode);
     return jsonResponse(
       {
         query,
+        countryCode,
         geocoded: geo,
       },
       200,
@@ -384,13 +625,17 @@ async function fetchLocationMap(locIds, baseUrl, token) {
 /**
  * Queries OpenStreetMap Nominatim for coordinates & country code
  */
-async function geocodeLocationName(locationName) {
+async function geocodeLocationName(locationName, countryCode = "") {
   const clean = sanitizeString(locationName, 200);
   if (!clean || IGNORED_LOCATIONS.has(clean.toLowerCase())) {
     return null;
   }
+  const cc = sanitizeString(countryCode || "", 10).toLowerCase();
   try {
-    const nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(clean)}&format=json&addressdetails=1&limit=1`;
+    let nomUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(clean)}&format=json&addressdetails=1&limit=1`;
+    if (cc && cc.length === 2) {
+      nomUrl += `&countrycodes=${encodeURIComponent(cc)}`;
+    }
     const res = await fetch(nomUrl, {
       headers: {
         "User-Agent": "PAVE-NocoDB-Geocoder/1.0 (connectedbydata.org)",
@@ -403,11 +648,11 @@ async function geocodeLocationName(locationName) {
       const top = results[0];
       const lat = parseFloat(top.lat);
       const lon = parseFloat(top.lon);
-      const cc = (top.address?.country_code || "").toUpperCase();
+      const resCc = (top.address?.country_code || cc || "").toUpperCase();
       return {
         latitude: !isNaN(lat) ? lat : null,
         longitude: !isNaN(lon) ? lon : null,
-        countryCode: cc,
+        countryCode: resCc,
       };
     }
   } catch (err) {
@@ -481,7 +726,18 @@ async function verifyStaffUser(request, baseUrl) {
 }
 
 function normalizeAssignedUsers(rawVal) {
-  if (!Array.isArray(rawVal)) return [];
+  if (!rawVal) return [];
+  if (typeof rawVal === "string") {
+    try {
+      rawVal = JSON.parse(rawVal);
+    } catch (_) {
+      return [];
+    }
+  }
+  if (!Array.isArray(rawVal)) {
+    if (typeof rawVal === "object") rawVal = [rawVal];
+    else return [];
+  }
   return rawVal
     .map((u) => {
       if (!u || typeof u !== "object") return null;
@@ -569,6 +825,259 @@ async function handleAuthMe(request, baseUrl, corsHeaders) {
     200,
     corsHeaders
   );
+}
+
+/**
+ * Handle GET /api/kanban/cases
+ * Returns cases formatted for Kanban display (Staff only).
+ * Supports chunked loading:
+ * - scope=active: loads Nomination, Submission, Draft, Under Review first
+ * - scope=remaining: loads Completed, Rejected, Duplicate
+ * - scope=all: loads all records (paged)
+ */
+async function handleGetKanbanCases(request, url, baseUrl, nocodbToken, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated) {
+    return jsonResponse(
+      { error: "Staff authentication required to access Kanban." },
+      401,
+      corsHeaders
+    );
+  }
+
+  const token = nocodbToken || staff.userToken;
+  const scope = (url.searchParams.get("scope") || "active").toLowerCase();
+
+  const fields = [
+    "Id",
+    "Project Title",
+    "Workflow: Status",
+    "Curation decision",
+    "Assigned to",
+    "CreatedAt",
+    "UpdatedAt",
+    "EditKey",
+  ].join(",");
+
+  let totalCount = 0;
+  try {
+    // 1. Get exact overall total count of cases table
+    const countUrl = `${baseUrl}/api/v2/tables/${TABLES.CASES}/records?limit=1&fields=Id`;
+    const countRes = await fetch(countUrl, { headers: { "xc-token": token } });
+    if (countRes.ok) {
+      const countData = await countRes.json();
+      totalCount = countData?.pageInfo?.totalRows || 0;
+    }
+  } catch (err) {
+    console.warn("Could not fetch cases table total count:", err);
+  }
+
+  // 2. Determine where filter based on requested scope
+  let whereClause = "";
+  if (scope === "active") {
+    // Priority active statuses loaded first as requested
+    whereClause = "(Workflow: Status,in,Nomination,Submission,Draft,Under Review)";
+  } else if (scope === "remaining" || scope === "archived") {
+    whereClause = "(Workflow: Status,in,Completed,Rejected,Duplicate)";
+  }
+
+  let allCases = [];
+  let offset = 0;
+  const limit = 100; // NocoDB standard page size
+  let hasMore = true;
+  let pageCount = 0;
+
+  try {
+    while (hasMore && pageCount < 25) {
+      pageCount++;
+      let nocoUrl = `${baseUrl}/api/v2/tables/${TABLES.CASES}/records?limit=${limit}&offset=${offset}&fields=${encodeURIComponent(fields)}`;
+      if (whereClause) {
+        nocoUrl += `&where=${encodeURIComponent(whereClause)}`;
+      }
+
+      const res = await fetch(nocoUrl, {
+        headers: { "xc-token": token },
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.error("Failed to fetch cases for kanban:", res.status, errText);
+        return jsonResponse({ error: "Failed to load cases from database." }, 502, corsHeaders);
+      }
+
+      const data = await res.json();
+      const list = data?.list || (Array.isArray(data) ? data : []);
+      allCases.push(...list);
+
+      const groupTotal = data?.pageInfo?.totalRows !== undefined ? data.pageInfo.totalRows : totalCount;
+      if (!data?.pageInfo || data.pageInfo.isLastPage === true || list.length < limit || allCases.length >= groupTotal) {
+        hasMore = false;
+      } else {
+        offset += limit;
+      }
+    }
+
+    const mappedCases = allCases.map((rec) => {
+      const id = rec.Id !== undefined ? rec.Id : rec.id;
+      return {
+        id,
+        projectTitle: rec["Project Title"] || "Untitled Case",
+        workflowStatus: rec["Workflow: Status"] || "Nomination",
+        curationDecision: rec["Curation decision"] || null,
+        assignedTo: normalizeAssignedUsers(rec["Assigned to"]),
+        createdAt: rec.CreatedAt || rec.created_at || null,
+        updatedAt: rec.UpdatedAt || rec.updated_at || null,
+        editKey: rec.EditKey || null,
+      };
+    });
+
+    // Sort cases by workflow priority order: Nomination -> Submission -> Draft -> Under Review -> Completed -> Rejected -> Duplicate
+    const STATUS_PRIORITY = {
+      "nomination": 1,
+      "submission": 2,
+      "draft": 3,
+      "under review": 4,
+      "completed": 5,
+      "rejected": 6,
+      "duplicate": 7,
+    };
+
+    mappedCases.sort((a, b) => {
+      const pA = STATUS_PRIORITY[(a.workflowStatus || "").trim().toLowerCase()] || 99;
+      const pB = STATUS_PRIORITY[(b.workflowStatus || "").trim().toLowerCase()] || 99;
+      return pA - pB;
+    });
+
+    const assignableUsers = await fetchAssignableUsers(baseUrl, staff);
+    const effectiveTotal = Math.max(totalCount, mappedCases.length);
+
+    return jsonResponse(
+      {
+        authenticated: true,
+        canEdit: staff.canEdit,
+        user: staff.user,
+        assignableUsers,
+        cases: mappedCases,
+        totalCount: effectiveTotal,
+        loadedCount: mappedCases.length,
+        scope,
+        hasMore: scope === "active" ? (effectiveTotal > mappedCases.length) : false,
+      },
+      200,
+      corsHeaders
+    );
+  } catch (err) {
+    console.error("Error in handleGetKanbanCases:", err);
+    return jsonResponse({ error: "Internal server error fetching cases." }, 500, corsHeaders);
+  }
+}
+
+/**
+ * Handle PATCH /api/kanban/case/workflow
+ * Updates a case's workflow status and/or assigned users (Staff only).
+ */
+async function handleUpdateKanbanWorkflow(request, baseUrl, nocodbToken, corsHeaders) {
+  const staff = await verifyStaffUser(request, baseUrl);
+  if (!staff.isAuthenticated || !staff.canEdit) {
+    return jsonResponse({ error: "Staff edit permissions required." }, 401, corsHeaders);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return jsonResponse({ error: "Invalid JSON body." }, 400, corsHeaders);
+  }
+
+  const caseId = Number(body.id || body.caseId);
+  if (!caseId || isNaN(caseId)) {
+    return jsonResponse({ error: "Valid case ID is required." }, 400, corsHeaders);
+  }
+
+  const patchPayload = { Id: caseId };
+
+  if (body.workflowStatus) {
+    const allowed = sanitizeAllowedOption(body.workflowStatus, [
+      "Nomination",
+      "Submission",
+      "Draft",
+      "Under Review",
+      "Completed",
+      "Rejected",
+      "Duplicate",
+    ]);
+    if (!allowed) {
+      return jsonResponse({ error: "Invalid workflow status." }, 400, corsHeaders);
+    }
+    patchPayload["Workflow: Status"] = allowed;
+  }
+
+  if (body.assignedTo !== undefined) {
+    const rawInput = Array.isArray(body.assignedTo)
+      ? body.assignedTo
+      : body.assignedTo
+      ? [body.assignedTo]
+      : [];
+    const knownUsers = await fetchAssignableUsers(baseUrl, staff);
+    const resolvedAssignees = [];
+    for (const item of rawInput) {
+      if (!item) continue;
+      const targetId = typeof item === "string" ? sanitizeString(item, 80) : sanitizeString(String(item.id || ""), 80);
+      const targetEmail =
+        typeof item === "string" && item.includes("@")
+          ? sanitizeString(item, 150)
+          : sanitizeString(String(item.email || ""), 150);
+      const match = knownUsers.find(
+        (u) =>
+          (targetId && u.id === targetId) ||
+          (targetEmail && u.email?.toLowerCase() === targetEmail.toLowerCase())
+      );
+      if (match) {
+        resolvedAssignees.push({ id: match.id, email: match.email, display_name: match.displayName });
+      } else if (targetId || targetEmail) {
+        resolvedAssignees.push({ id: targetId, email: targetEmail });
+      }
+    }
+    patchPayload["Assigned to"] = resolvedAssignees;
+  }
+
+  const activeWriteToken = staff.userToken || nocodbToken;
+  try {
+    // Note: NocoDB v2 PATCH /api/v2/tables/{tableId}/records expects an ARRAY of objects [patchPayload]
+    let updateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "xc-token": activeWriteToken,
+      },
+      body: JSON.stringify([patchPayload]),
+    });
+
+    // Fallback to system token if staff user token has restricted record update rights
+    if (!updateRes.ok && nocodbToken && activeWriteToken !== nocodbToken) {
+      console.warn("Retrying case workflow update with system token...");
+      updateRes = await fetch(`${baseUrl}/api/v2/tables/${TABLES.CASES}/records`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "xc-token": nocodbToken,
+        },
+        body: JSON.stringify([patchPayload]),
+      });
+    }
+
+    if (!updateRes.ok) {
+      const errText = await updateRes.text();
+      console.error("Failed to update case workflow:", updateRes.status, errText);
+      return jsonResponse({ error: `Failed to update case in database (${updateRes.status})` }, 502, corsHeaders);
+    }
+
+    const result = await updateRes.json();
+    return jsonResponse({ success: true, updated: result }, 200, corsHeaders);
+  } catch (err) {
+    console.error("Error in handleUpdateKanbanWorkflow:", err);
+    return jsonResponse({ error: "Failed to update case." }, 500, corsHeaders);
+  }
 }
 
 /**
@@ -1767,6 +2276,17 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
     );
   }
 
+  if (payload.methodImage !== undefined) {
+    caseData["Method Image"] = prepareAttachmentsForNocoDB(
+      payload.methodImage,
+      1
+    );
+  }
+
+  if (payload.methodImageCaption !== undefined) {
+    caseData["Method image caption"] = sanitizeString(payload.methodImageCaption, 500) || null;
+  }
+
   // Only assign workflow status and editKey on initial creation (or allow authenticated staff to update workflow status and assigned individual)
   let generatedEditKey = null;
   if (!isEditMode) {
@@ -1787,6 +2307,16 @@ async function handleSubmitOrEditCase(request, baseUrl, token, corsHeaders) {
       if (allowedWorkflow) {
         caseData["Workflow: Status"] = allowedWorkflow;
       }
+    }
+
+    if (payload.curationDecision !== undefined) {
+      const allowedCuration = sanitizeAllowedOption(payload.curationDecision, [
+        "Featured Full Case",
+        "Full Case",
+        "Mapping Entry",
+        "Do not include",
+      ]);
+      caseData["Curation decision"] = allowedCuration || null;
     }
 
     if (payload.assignedTo !== undefined) {
@@ -2304,7 +2834,7 @@ async function resolveLocations(locsList, baseUrl, token) {
     let countryCode = sanitizeString(item.countryCode || "", 10);
 
     if (latitude === null || longitude === null) {
-      const geo = await geocodeLocationName(name);
+      const geo = await geocodeLocationName(name, countryCode);
       if (geo) {
         latitude = geo.latitude;
         longitude = geo.longitude;

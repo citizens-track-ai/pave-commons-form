@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workflow Kanban — PAVE Case Book</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="kanban.css">
+</head>
+
+<body class="kanban-page">
+  <div class="kanban-layout-container">
+    <header class="app-header kanban-header">
+      <div class="header-titles">
+        <div class="kanban-title-row">
+          <h1>PAVE Case Book</h1>
+          <span class="kanban-header-pill">Workflow Kanban</span>
+        </div>
+        <p class="subtitle">Internal review pipeline and case management dashboard.</p>
+      </div>
+      <div class="header-right-panel">
+        <nav class="top-header-menu" aria-label="Top menu">
+          <a href="/" class="top-menu-link">&larr; Case Form</a>
+          <span class="top-menu-divider" aria-hidden="true"></span>
+          <a href="/" class="top-menu-link">New entry</a>
+          <span class="top-menu-divider" aria-hidden="true"></span>
+          <button type="button" id="kanbanAuthActionBtn" class="top-menu-link">Sign in</button>
+        </nav>
+        <div id="kanbanStaffBadge" class="staff-active-badge hidden">
+          <span class="staff-dot" aria-hidden="true"></span>
+          <span id="kanbanUserLabel">Signed in</span>
+          <button type="button" id="kanbanLogoutBtn" class="btn-staff-logout"
+            title="Sign out of staff session">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Unauthorized / Login Gate Screen -->
+    <main id="kanbanLoginGate" class="kanban-gate-container">
+      <div class="kanban-gate-card">
+        <div class="gate-icon" aria-hidden="true">🔒</div>
+        <h2>Staff Access Required</h2>
+        <p class="gate-description">
+          The Workflow Kanban board is restricted to authorized PAVE editors and reviewers. Please enter your
+          personal NocoDB API Token (<code>xc-token</code>) to continue.
+        </p>
+
+        <form id="kanbanGateLoginForm" class="gate-form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="kanbanGateTokenInput">Personal NocoDB API Token</label>
+            <input type="password" id="kanbanGateTokenInput" placeholder="Paste your NocoDB API token..." autocomplete="off" required>
+            <small>Find or create a token in NocoDB under <strong>Account Settings &rarr; API Tokens</strong>.</small>
+          </div>
+
+          <div id="kanbanGateError" class="status-msg error hidden"></div>
+
+          <div class="gate-actions">
+            <a href="/" class="btn-secondary">&larr; Return to Form</a>
+            <button type="button" id="kanbanGateLoginBtn" class="btn-primary">Verify &amp; Sign In</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <!-- Main Authenticated Kanban Workspace -->
+    <main id="kanbanWorkspace" class="kanban-workspace hidden" aria-label="Kanban Board View">
+      <!-- Controls Toolbar -->
+      <section class="kanban-toolbar" aria-label="Kanban filters and controls">
+        <div class="toolbar-filter-group">
+          <!-- Search by Title -->
+          <div class="toolbar-search-wrapper">
+            <span class="search-icon" aria-hidden="true">🔍</span>
+            <input type="search" id="kanbanSearchInput" class="kanban-search-input"
+              placeholder="Search cases by title or ID..." aria-label="Search cases by title or ID" />
+            <button type="button" id="kanbanSearchClearBtn" class="search-clear-btn hidden" aria-label="Clear search">&times;</button>
+          </div>
+
+          <!-- Filter by Assigned User -->
+          <div class="toolbar-control-item">
+            <label for="kanbanAssigneeFilter">Assigned to:</label>
+            <select id="kanbanAssigneeFilter" class="kanban-select">
+              <option value="all">All Assignees</option>
+              <option value="me">👤 Assigned to Me</option>
+              <option value="unassigned">Unassigned</option>
+              <optgroup id="kanbanAssigneeOptGroup" label="Team Members">
+                <!-- Dynamically populated -->
+              </optgroup>
+            </select>
+          </div>
+
+          <!-- Filter by Curation Decision -->
+          <div class="toolbar-control-item">
+            <label for="kanbanCurationFilter">Curation:</label>
+            <select id="kanbanCurationFilter" class="kanban-select">
+              <option value="all">All Decisions</option>
+              <option value="Featured Full Case">Featured Full Case</option>
+              <option value="Full Case">Full Case</option>
+              <option value="Mapping Entry">Mapping Entry</option>
+              <option value="Do not include">Do not include</option>
+              <option value="undecided">Undecided / None</option>
+            </select>
+          </div>
+
+          <!-- Sort Select -->
+          <div class="toolbar-control-item">
+            <label for="kanbanSortSelect">Sort by:</label>
+            <select id="kanbanSortSelect" class="kanban-select">
+              <option value="updated-desc" selected>Updated: Newest first</option>
+              <option value="updated-asc">Updated: Oldest first</option>
+              <option value="created-desc">Created: Newest first</option>
+              <option value="created-asc">Created: Oldest first</option>
+              <option value="title-asc">Title: A &rarr; Z</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="toolbar-actions-group">
+          <span id="kanbanStatsBadge" class="kanban-stats-pill" aria-live="polite">Loading cases...</span>
+          <button type="button" id="kanbanLoadMoreBtn" class="btn-toolbar-primary hidden" title="Load remaining completed and archived cases">
+            ⬇ Load more
+          </button>
+          <button type="button" id="kanbanToggleAllColsBtn" class="btn-toolbar-secondary" title="Collapse or expand all columns">
+            Collapse All
+          </button>
+          <button type="button" id="kanbanRefreshBtn" class="btn-toolbar-secondary" title="Refresh case data from NocoDB">
+            ↻ Refresh
+          </button>
+        </div>
+      </section>
+
+      <!-- Kanban Columns Board -->
+      <section class="kanban-board-scroll-area">
+        <div id="kanbanBoard" class="kanban-board">
+          <!-- Column: Nomination -->
+          <div class="kanban-column" data-status="Nomination">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-nomination" aria-hidden="true"></span>
+                <span class="column-title-text">Nomination</span>
+                <span class="column-count-badge" id="count-Nomination">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Nomination" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Nomination" title="Click to expand Nomination column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Nomination</span>
+              <span class="column-count-badge" id="collapsed-count-Nomination">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Nomination" id="list-Nomination">
+              <!-- Dynamically populated cards -->
+            </div>
+          </div>
+
+          <!-- Column: Submission -->
+          <div class="kanban-column" data-status="Submission">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-submission" aria-hidden="true"></span>
+                <span class="column-title-text">Submission</span>
+                <span class="column-count-badge" id="count-Submission">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Submission" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Submission" title="Click to expand Submission column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Submission</span>
+              <span class="column-count-badge" id="collapsed-count-Submission">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Submission" id="list-Submission"></div>
+          </div>
+
+          <!-- Column: Draft -->
+          <div class="kanban-column" data-status="Draft">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-draft" aria-hidden="true"></span>
+                <span class="column-title-text">Draft</span>
+                <span class="column-count-badge" id="count-Draft">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Draft" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Draft" title="Click to expand Draft column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Draft</span>
+              <span class="column-count-badge" id="collapsed-count-Draft">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Draft" id="list-Draft"></div>
+          </div>
+
+          <!-- Column: Under Review -->
+          <div class="kanban-column" data-status="Under Review">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-under-review" aria-hidden="true"></span>
+                <span class="column-title-text">Under Review</span>
+                <span class="column-count-badge" id="count-Under-Review">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Under Review" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Under Review" title="Click to expand Under Review column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Under Review</span>
+              <span class="column-count-badge" id="collapsed-count-Under-Review">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Under Review" id="list-Under-Review"></div>
+          </div>
+
+          <!-- Column: Completed -->
+          <div class="kanban-column" data-status="Completed">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-completed" aria-hidden="true"></span>
+                <span class="column-title-text">Completed</span>
+                <span class="column-count-badge" id="count-Completed">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Completed" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Completed" title="Click to expand Completed column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Completed</span>
+              <span class="column-count-badge" id="collapsed-count-Completed">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Completed" id="list-Completed"></div>
+          </div>
+
+          <!-- Column: Rejected -->
+          <div class="kanban-column" data-status="Rejected">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-rejected" aria-hidden="true"></span>
+                <span class="column-title-text">Rejected</span>
+                <span class="column-count-badge" id="count-Rejected">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Rejected" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Rejected" title="Click to expand Rejected column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Rejected</span>
+              <span class="column-count-badge" id="collapsed-count-Rejected">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Rejected" id="list-Rejected"></div>
+          </div>
+
+          <!-- Column: Duplicate -->
+          <div class="kanban-column" data-status="Duplicate">
+            <div class="kanban-column-header">
+              <div class="column-header-title">
+                <span class="status-indicator status-duplicate" aria-hidden="true"></span>
+                <span class="column-title-text">Duplicate</span>
+                <span class="column-count-badge" id="count-Duplicate">0</span>
+              </div>
+              <button type="button" class="btn-toggle-col" data-toggle="Duplicate" title="Toggle column collapse" aria-label="Toggle column collapse">
+                <span class="toggle-icon">◀</span>
+              </button>
+            </div>
+            <div class="column-collapsed-strip" data-expand="Duplicate" title="Click to expand Duplicate column">
+              <span class="toggle-icon">▶</span>
+              <span class="collapsed-title">Duplicate</span>
+              <span class="column-count-badge" id="collapsed-count-Duplicate">0</span>
+            </div>
+            <div class="kanban-cards-list" data-status="Duplicate" id="list-Duplicate"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="kanbanToastContainer" class="kanban-toast-container" aria-live="polite"></div>
+  </div>
+
+  <script src="kanban.js"></script>
+</body>
+
+</html>

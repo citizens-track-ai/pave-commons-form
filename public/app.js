@@ -197,13 +197,22 @@ function updateStageProgress() {
   }
 }
 
-function goToStage(targetStageId, options = {}) {
+async function goToStage(targetStageId, options = {}) {
   const activeStages = getActiveStages();
   const exists = activeStages.some((s) => s.id === targetStageId);
   if (!exists) targetStageId = activeStages[0].id;
 
   const previousStageId = state.currentStageId;
   state.currentStageId = targetStageId;
+
+  // In signed in mode, automatically save any edited organisation or location details when navigating stages
+  if (state.staffUser && previousStageId !== targetStageId) {
+    if (previousStageId === "stage-3") {
+      await saveAllDirtyStaffOrganisations();
+    } else if (previousStageId === "stage-4") {
+      await saveAllDirtyStaffLocations();
+    }
+  }
 
   // In edit mode, automatically save any dirty changes when moving between stages
   if (state.isEditMode && !options.skipAutoSave && previousStageId !== targetStageId) {
@@ -306,6 +315,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   initParticipantManager();
   initResourceManager();
   initPhotoManager();
+  initMethodImageManager();
+  initRichTextEditors();
   initMessagesManager();
   initStaffAuthAndDrawer();
   initEditAutoSaveControls();
@@ -562,6 +573,10 @@ function updateStaffAuthUI() {
   const activeBadge = document.getElementById("staffActiveBadge");
   const userLabel = document.getElementById("staffUserLabel");
   const composerAttr = document.getElementById("composerAttribution");
+  const orgsSection = document.getElementById("staffOrgsEditorSection");
+  const locsSection = document.getElementById("staffLocationsEditorSection");
+  const kanbanBtn = document.getElementById("topMenuKanbanBtn");
+  const kanbanDivider = document.getElementById("topMenuKanbanDivider");
 
   if (state.staffUser) {
     if (loginBtn) {
@@ -569,6 +584,8 @@ function updateStaffAuthUI() {
       loginBtn.title = "Sign out of staff session";
     }
     if (activeBadge) activeBadge.classList.remove("hidden");
+    if (kanbanBtn) kanbanBtn.classList.remove("hidden");
+    if (kanbanDivider) kanbanDivider.classList.remove("hidden");
     if (userLabel) {
       const name = (state.staffUser.displayName || "").trim();
       const email = (state.staffUser.email || "").trim();
@@ -582,12 +599,32 @@ function updateStaffAuthUI() {
     if (composerAttr) {
       composerAttr.textContent = `Posting as ${state.staffUser.displayName || state.staffUser.email}`;
     }
+
+    if (orgsSection) {
+      orgsSection.classList.remove("hidden");
+      renderStaffOrganisationsTable();
+    }
+    if (locsSection) {
+      locsSection.classList.remove("hidden");
+      renderStaffLocationsList();
+    }
+    const methodImgSection = document.getElementById("staffMethodImageSection");
+    if (methodImgSection) {
+      methodImgSection.classList.remove("hidden");
+      renderMethodImageUI();
+    }
   } else {
     if (loginBtn) {
       loginBtn.textContent = "Sign in";
       loginBtn.title = "Sign in with NocoDB";
     }
     if (activeBadge) activeBadge.classList.add("hidden");
+    if (kanbanBtn) kanbanBtn.classList.add("hidden");
+    if (kanbanDivider) kanbanDivider.classList.add("hidden");
+    if (orgsSection) orgsSection.classList.add("hidden");
+    if (locsSection) locsSection.classList.add("hidden");
+    const methodImgSection = document.getElementById("staffMethodImageSection");
+    if (methodImgSection) methodImgSection.classList.add("hidden");
   }
 }
 
@@ -1114,12 +1151,17 @@ async function checkEditMode() {
     if (state.staffUser) {
       staffBadge?.classList.remove("hidden");
       openDrawerBtn?.classList.remove("hidden");
-      if (state.staffCanEdit && workflowRow && workflowSelect) {
+      if (state.staffCanEdit && workflowRow) {
         workflowRow.classList.remove("hidden");
-        workflowSelect.value = c.workflowStatus || "Submission";
+        if (workflowSelect) workflowSelect.value = c.workflowStatus || "Submission";
+        const curationSelect = document.getElementById("staffCurationDecision");
+        if (curationSelect) curationSelect.value = c.curationDecision || "";
         populateAssignedToSelect();
       }
       renderDrawerContents();
+      renderStaffOrganisationsTable();
+      renderStaffLocationsList();
+      renderMethodImageUI();
     } else {
       staffBadge?.classList.add("hidden");
       openDrawerBtn?.classList.add("hidden");
@@ -1331,6 +1373,10 @@ function renderSelectedTags(tagsEl, stateKey) {
     tagsEl.appendChild(tag);
   });
   updateStageProgress();
+  if (state.staffUser) {
+    renderStaffOrganisationsTable();
+    renderStaffLocationsList();
+  }
 }
 
 /* -------------------------------------------------------------
@@ -1600,11 +1646,14 @@ function renderLocationDropdownResults(dropdownEl, query, results, hasExactMatch
   dropdownEl.classList.remove("hidden");
 }
 
-function renderParticipantsList(listEl) {
+function renderParticipantsList(listEl = document.getElementById("participantsList")) {
   if (!listEl) return;
   listEl.innerHTML = "";
   if (state.participants.length === 0) {
     listEl.innerHTML = `<p class="empty-note">No participant groups added yet.</p>`;
+    if (state.staffUser) {
+      renderStaffLocationsList();
+    }
     return;
   }
 
@@ -1670,6 +1719,9 @@ function renderParticipantsList(listEl) {
 
     listEl.appendChild(card);
   });
+  if (state.staffUser) {
+    renderStaffLocationsList();
+  }
 }
 
 /* -------------------------------------------------------------
@@ -1708,6 +1760,974 @@ async function uploadFilesToApi(fileList, category = "resource") {
   }
 
   return Array.isArray(data.attachments) ? data.attachments : [];
+}
+
+/* -------------------------------------------------------------
+ * 4b. Staff Entity Editors: Collapsible Organisations & Locations Tables
+ * ------------------------------------------------------------- */
+const ISO_COUNTRY_CODES = [
+  { code: "", name: "(None / Not specified)" },
+  { code: "AF", name: "Afghanistan (AF)" },
+  { code: "AL", name: "Albania (AL)" },
+  { code: "DZ", name: "Algeria (DZ)" },
+  { code: "AR", name: "Argentina (AR)" },
+  { code: "AM", name: "Armenia (AM)" },
+  { code: "AU", name: "Australia (AU)" },
+  { code: "AT", name: "Austria (AT)" },
+  { code: "BD", name: "Bangladesh (BD)" },
+  { code: "BE", name: "Belgium (BE)" },
+  { code: "BR", name: "Brazil (BR)" },
+  { code: "CA", name: "Canada (CA)" },
+  { code: "CL", name: "Chile (CL)" },
+  { code: "CN", name: "China (CN)" },
+  { code: "CO", name: "Colombia (CO)" },
+  { code: "CR", name: "Costa Rica (CR)" },
+  { code: "HR", name: "Croatia (HR)" },
+  { code: "CY", name: "Cyprus (CY)" },
+  { code: "CZ", name: "Czech Republic (CZ)" },
+  { code: "DK", name: "Denmark (DK)" },
+  { code: "EG", name: "Egypt (EG)" },
+  { code: "EE", name: "Estonia (EE)" },
+  { code: "ET", name: "Ethiopia (ET)" },
+  { code: "FI", name: "Finland (FI)" },
+  { code: "FR", name: "France (FR)" },
+  { code: "DE", name: "Germany (DE)" },
+  { code: "GH", name: "Ghana (GH)" },
+  { code: "GR", name: "Greece (GR)" },
+  { code: "HK", name: "Hong Kong (HK)" },
+  { code: "HU", name: "Hungary (HU)" },
+  { code: "IS", name: "Iceland (IS)" },
+  { code: "IN", name: "India (IN)" },
+  { code: "ID", name: "Indonesia (ID)" },
+  { code: "IE", name: "Ireland (IE)" },
+  { code: "IL", name: "Israel (IL)" },
+  { code: "IT", name: "Italy (IT)" },
+  { code: "JP", name: "Japan (JP)" },
+  { code: "JO", name: "Jordan (JO)" },
+  { code: "KE", name: "Kenya (KE)" },
+  { code: "KR", name: "South Korea (KR)" },
+  { code: "LV", name: "Latvia (LV)" },
+  { code: "LT", name: "Lithuania (LT)" },
+  { code: "LU", name: "Luxembourg (LU)" },
+  { code: "MY", name: "Malaysia (MY)" },
+  { code: "MX", name: "Mexico (MX)" },
+  { code: "MA", name: "Morocco (MA)" },
+  { code: "NP", name: "Nepal (NP)" },
+  { code: "NL", name: "Netherlands (NL)" },
+  { code: "NZ", name: "New Zealand (NZ)" },
+  { code: "NG", name: "Nigeria (NG)" },
+  { code: "NO", name: "Norway (NO)" },
+  { code: "PK", name: "Pakistan (PK)" },
+  { code: "PE", name: "Peru (PE)" },
+  { code: "PH", name: "Philippines (PH)" },
+  { code: "PL", name: "Poland (PL)" },
+  { code: "PT", name: "Portugal (PT)" },
+  { code: "QA", name: "Qatar (QA)" },
+  { code: "RO", name: "Romania (RO)" },
+  { code: "RW", name: "Rwanda (RW)" },
+  { code: "SA", name: "Saudi Arabia (SA)" },
+  { code: "SG", name: "Singapore (SG)" },
+  { code: "ZA", name: "South Africa (ZA)" },
+  { code: "ES", name: "Spain (ES)" },
+  { code: "SE", name: "Sweden (SE)" },
+  { code: "CH", name: "Switzerland (CH)" },
+  { code: "TW", name: "Taiwan (TW)" },
+  { code: "TZ", name: "Tanzania (TZ)" },
+  { code: "TH", name: "Thailand (TH)" },
+  { code: "TN", name: "Tunisia (TN)" },
+  { code: "TR", name: "Turkey (TR)" },
+  { code: "UG", name: "Uganda (UG)" },
+  { code: "UA", name: "Ukraine (UA)" },
+  { code: "AE", name: "United Arab Emirates (AE)" },
+  { code: "GB", name: "United Kingdom (GB)" },
+  { code: "US", name: "United States (US)" },
+  { code: "UY", name: "Uruguay (UY)" },
+  { code: "VN", name: "Vietnam (VN)" },
+  { code: "ZM", name: "Zambia (ZM)" },
+  { code: "ZW", name: "Zimbabwe (ZW)" },
+];
+
+function getKnownCaseLocations() {
+  const locMap = new Map();
+  const registerLoc = (l) => {
+    if (!l) return;
+    const lid = Number(l.id || l.Id);
+    if (lid && !locMap.has(lid)) {
+      locMap.set(lid, {
+        id: lid,
+        name: l.name || l.Name || `Location #${lid}`,
+        countryCode: l.countryCode || l["Country Code"] || "",
+        latitude: l.latitude !== undefined ? l.latitude : l.Latitude,
+        longitude: l.longitude !== undefined ? l.longitude : l.Longitude,
+      });
+    }
+  };
+
+  (state.participants || []).forEach((p) => {
+    (p.locations || []).forEach(registerLoc);
+  });
+
+  const allOrgs = [
+    ...(state.leadOrganisations || []),
+    ...(state.fundingOrganisations || []),
+    ...(state.involvedOrganisations || []),
+  ];
+  allOrgs.forEach((org) => {
+    (org.locations || []).forEach(registerLoc);
+  });
+
+  return [...locMap.values()];
+}
+
+function updateOrgInLocalState(updatedOrg) {
+  if (!updatedOrg || !updatedOrg.id) return;
+  const updateList = (list) => {
+    (list || []).forEach((o) => {
+      if (Number(o.id) === Number(updatedOrg.id)) {
+        o.name = updatedOrg.name;
+        o.website = updatedOrg.website;
+        o.type = updatedOrg.type;
+        o.locations = updatedOrg.locations || [];
+      }
+    });
+  };
+
+  updateList(state.leadOrganisations);
+  updateList(state.fundingOrganisations);
+  updateList(state.involvedOrganisations);
+}
+
+function updateLocationInLocalState(updatedLoc) {
+  if (!updatedLoc || !updatedLoc.id) return;
+  const updateLocObj = (l) => {
+    if (Number(l.id) === Number(updatedLoc.id)) {
+      l.name = updatedLoc.name;
+      l.latitude = updatedLoc.latitude;
+      l.longitude = updatedLoc.longitude;
+      l.countryCode = updatedLoc.countryCode;
+    }
+  };
+
+  (state.participants || []).forEach((p) => {
+    (p.locations || []).forEach(updateLocObj);
+  });
+
+  const allOrgs = [
+    ...(state.leadOrganisations || []),
+    ...(state.fundingOrganisations || []),
+    ...(state.involvedOrganisations || []),
+  ];
+  allOrgs.forEach((org) => {
+    (org.locations || []).forEach(updateLocObj);
+  });
+}
+
+function renderStaffOrganisationsTable() {
+  const container = document.getElementById("staffOrgsTableContainer");
+  const countEl = document.getElementById("staffOrgsCount");
+  if (!container) return;
+
+  const orgMap = new Map();
+  const addOrgWithRole = (orgList, roleName) => {
+    (orgList || []).forEach((org) => {
+      const key = org.id ? `id_${org.id}` : `name_${(org.name || "").toLowerCase()}`;
+      if (!orgMap.has(key)) {
+        orgMap.set(key, {
+          org,
+          roles: new Set([roleName]),
+        });
+      } else {
+        orgMap.get(key).roles.add(roleName);
+      }
+    });
+  };
+
+  addOrgWithRole(state.leadOrganisations, "Lead");
+  addOrgWithRole(state.fundingOrganisations, "Funder");
+  addOrgWithRole(state.involvedOrganisations, "Involved");
+
+  const orgEntries = [...orgMap.values()];
+  if (countEl) {
+    countEl.textContent = `${orgEntries.length} linked`;
+  }
+
+  if (orgEntries.length === 0) {
+    container.innerHTML = `<p class="empty-note">No organisations linked yet. Search and select organisations above to edit their database details here.</p>`;
+    return;
+  }
+
+  const availableLocations = getKnownCaseLocations();
+
+  container.innerHTML = orgEntries
+    .map(({ org, roles }, index) => {
+      const orgId = org.id || null;
+      const roleBadges = [...roles]
+        .map((r) => `<span class="staff-role-badge staff-role-${r.toLowerCase()}">${r}</span>`)
+        .join(" ");
+
+      const currentMainLoc = Array.isArray(org.locations) && org.locations.length > 0 ? org.locations[0] : null;
+
+      const rawTypes = Array.isArray(org.type)
+        ? org.type
+        : typeof org.type === "string" && org.type.trim()
+        ? org.type.split(",").map((s) => s.trim())
+        : [];
+
+      const KNOWN_TYPES = [
+        "Private sector",
+        "Funder",
+        "Public sector",
+        "Non-profit",
+        "Research",
+        "Individual Donor",
+      ];
+
+      const typePillsHtml = KNOWN_TYPES.map((t) => {
+        const isChecked = rawTypes.includes(t);
+        return `
+          <label class="org-type-pill ${isChecked ? "is-selected" : ""}">
+            <input type="checkbox" name="orgType_${index}" value="${escapeHtml(t)}" ${isChecked ? "checked" : ""}>
+            <span>${escapeHtml(t)}</span>
+          </label>
+        `;
+      }).join("");
+
+      return `
+        <div class="staff-entity-card" data-org-id="${orgId || ""}" data-org-index="${index}">
+          <div class="staff-entity-card-header">
+            <div class="staff-entity-header-left">
+              <strong>${escapeHtml(org.name || "Untitled Organisation")}</strong>
+              ${roleBadges}
+              ${orgId ? `<span class="staff-entity-id-tag">ID: #${orgId}</span>` : `<span class="badge badge-amber">(Unsaved New Org)</span>`}
+            </div>
+            <div class="staff-entity-header-actions">
+              <span class="staff-inline-status" id="orgStatus_${index}"></span>
+            </div>
+          </div>
+
+          <div class="staff-card-grid">
+            <div class="staff-field-group">
+              <label for="orgNameInput_${index}">Organisation Title *</label>
+              <input type="text" id="orgNameInput_${index}" value="${escapeHtml(org.name || "")}" placeholder="e.g. Health Foundation">
+            </div>
+
+            <div class="staff-field-group">
+              <label for="orgWebInput_${index}">Website URL</label>
+              <input type="url" id="orgWebInput_${index}" value="${escapeHtml(org.website || "")}" placeholder="https://example.org">
+            </div>
+
+            <div class="staff-field-group" style="grid-column: 1 / -1;">
+              <label>Organisation Type(s)</label>
+              <div class="org-types-pills" id="orgTypesPills_${index}">
+                ${typePillsHtml}
+              </div>
+            </div>
+
+            <div class="staff-field-group" style="grid-column: 1 / -1;">
+              <label>Main Location (Headquarters / City)</label>
+              <div class="org-single-location-picker" id="orgLocPicker_${index}">
+                <div class="selected-tags" id="orgLocTags_${index}"></div>
+                <div class="picker-search-box ${currentMainLoc ? "hidden" : ""}" id="orgLocSearchBox_${index}">
+                  <input type="text" class="org-search-input" id="orgLocInput_${index}" placeholder="Search or add &amp; geocode location (e.g. London, Nairobi)...">
+                  <div class="search-dropdown hidden" id="orgLocDropdown_${index}"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="staff-entity-footer">
+            <button type="button" class="btn-staff-entity-save" id="saveOrgBtn_${index}" ${!orgId ? "disabled title='Save case changes first to assign a database ID'" : ""}>
+              💾 Save Organisation Details
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // Attach event listeners
+  orgEntries.forEach(({ org }, index) => {
+    const cardEl = container.querySelector(`[data-org-index="${index}"]`);
+    if (!cardEl) return;
+
+    const nameInput = cardEl.querySelector(`#orgNameInput_${index}`);
+    const webInput = cardEl.querySelector(`#orgWebInput_${index}`);
+    const saveBtn = cardEl.querySelector(`#saveOrgBtn_${index}`);
+    const statusEl = cardEl.querySelector(`#orgStatus_${index}`);
+
+    const currentMainLoc = Array.isArray(org.locations) && org.locations.length > 0 ? org.locations[0] : null;
+    let cardMainLoc = currentMainLoc ? { ...currentMainLoc } : null;
+
+    // Single-location picker controls
+    const locTagsEl = cardEl.querySelector(`#orgLocTags_${index}`);
+    const locSearchBox = cardEl.querySelector(`#orgLocSearchBox_${index}`);
+    const locInputEl = cardEl.querySelector(`#orgLocInput_${index}`);
+    const locDropdownEl = cardEl.querySelector(`#orgLocDropdown_${index}`);
+
+    const renderCardLocTag = () => {
+      if (!locTagsEl || !locSearchBox) return;
+      locTagsEl.innerHTML = "";
+      if (cardMainLoc) {
+        const hasCoords =
+          cardMainLoc.latitude !== null &&
+          cardMainLoc.latitude !== undefined &&
+          cardMainLoc.longitude !== null &&
+          cardMainLoc.longitude !== undefined;
+        const tag = document.createElement("span");
+        tag.className = "tag" + (cardMainLoc.isNew ? " tag-new" : "");
+        const cc = cardMainLoc.countryCode ? ` [${escapeHtml(cardMainLoc.countryCode)}]` : "";
+        const coordsBadge = hasCoords
+          ? ` <small class="tag-coord-check" title="Plotted on map (${Number(cardMainLoc.latitude).toFixed(2)}, ${Number(cardMainLoc.longitude).toFixed(2)})">&#10003;</small>`
+          : "";
+        tag.innerHTML = `
+          📍 ${escapeHtml(cardMainLoc.name || "Location")}${cc}${coordsBadge}
+          ${cardMainLoc.isNew ? "<small>(New)</small>" : ""}
+          <button type="button" aria-label="Remove main location">&times;</button>
+        `;
+        tag.querySelector("button").addEventListener("click", () => {
+          cardMainLoc = null;
+          renderCardLocTag();
+          if (locInputEl) {
+            locInputEl.value = "";
+            setTimeout(() => locInputEl.focus(), 50);
+          }
+        });
+        locTagsEl.appendChild(tag);
+
+        if (hasCoords) {
+          const mapBtn = document.createElement("a");
+          mapBtn.href = `https://www.google.com/maps?q=${cardMainLoc.latitude},${cardMainLoc.longitude}`;
+          mapBtn.target = "_blank";
+          mapBtn.rel = "noopener noreferrer";
+          mapBtn.className = "btn-map-preview";
+          mapBtn.title = "View on Google Maps";
+          mapBtn.innerHTML = "🗺️ Map ↗";
+          locTagsEl.appendChild(mapBtn);
+        }
+
+        locSearchBox.classList.add("hidden");
+      } else {
+        locSearchBox.classList.remove("hidden");
+      }
+    };
+
+    renderCardLocTag();
+
+    let locDebounceTimer;
+    if (locInputEl && locDropdownEl) {
+      locInputEl.addEventListener("input", (e) => {
+        clearTimeout(locDebounceTimer);
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+          locDropdownEl.innerHTML = "";
+          locDropdownEl.classList.add("hidden");
+          return;
+        }
+
+        locDebounceTimer = setTimeout(async () => {
+          try {
+            locDropdownEl.innerHTML = `<div class="dropdown-item loading">Searching locations...</div>`;
+            locDropdownEl.classList.remove("hidden");
+
+            const res = await fetch(`/api/locations?q=${encodeURIComponent(query)}`);
+            const data = await res.json();
+            const results = data.list || [];
+            const hasExactMatch = data.hasExactMatch || false;
+
+            renderLocationDropdownResults(locDropdownEl, query, results, hasExactMatch, async (selectedLoc) => {
+              cardMainLoc = { ...selectedLoc };
+              renderCardLocTag();
+
+              // If newly added location has no coordinates yet, geocode in background
+              if (selectedLoc.isNew && (selectedLoc.latitude == null || selectedLoc.longitude == null)) {
+                try {
+                  const geoRes = await fetch(
+                    `/api/locations?geocode=1&q=${encodeURIComponent(selectedLoc.name)}`
+                  );
+                  if (geoRes.ok) {
+                    const geoData = await geoRes.json();
+                    if (geoData.geocoded) {
+                      cardMainLoc.latitude = geoData.geocoded.latitude;
+                      cardMainLoc.longitude = geoData.geocoded.longitude;
+                      cardMainLoc.countryCode = geoData.geocoded.countryCode || "";
+                      renderCardLocTag();
+                    }
+                  }
+                } catch (_) {}
+              }
+
+              locInputEl.value = "";
+              locDropdownEl.innerHTML = "";
+              locDropdownEl.classList.add("hidden");
+            });
+          } catch {
+            locDropdownEl.innerHTML = `<div class="dropdown-item error">Error searching locations</div>`;
+          }
+        }, 220);
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!cardEl.contains(e.target)) {
+          locDropdownEl?.classList.add("hidden");
+        }
+      });
+    }
+
+    let initialName = (org.name || "").trim();
+    let initialWeb = (org.website || "").trim();
+    let initialTypes = (Array.isArray(org.type)
+      ? org.type
+      : typeof org.type === "string" && org.type.trim()
+      ? org.type.split(",").map((s) => s.trim())
+      : []
+    ).sort();
+    let initialLocId = currentMainLoc && currentMainLoc.id ? Number(currentMainLoc.id) : null;
+    let initialLocName = currentMainLoc && currentMainLoc.name ? currentMainLoc.name.trim() : "";
+
+    cardEl._isDirty = () => {
+      const curName = (nameInput?.value || "").trim();
+      const curWeb = (webInput?.value || "").trim();
+      const curTypes = Array.from(cardEl.querySelectorAll(`.org-types-pills input:checked`))
+        .map((cb) => cb.value)
+        .sort();
+      const curLocId = cardMainLoc && cardMainLoc.id ? Number(cardMainLoc.id) : null;
+      const curLocName = cardMainLoc && cardMainLoc.name ? cardMainLoc.name.trim() : "";
+
+      if (cardMainLoc && cardMainLoc.isNew) return true;
+      if (curName !== initialName) return true;
+      if (curWeb !== initialWeb) return true;
+      if (JSON.stringify(curTypes) !== JSON.stringify(initialTypes)) return true;
+      if (curLocId !== initialLocId) return true;
+      if (curLocName !== initialLocName) return true;
+      return false;
+    };
+
+    const checkAndShowDirty = () => {
+      const dirty = cardEl._isDirty();
+      if (dirty) {
+        cardEl.dataset.isDirty = "true";
+        if (statusEl && !statusEl.classList.contains("is-saving")) {
+          statusEl.className = "staff-inline-status is-unsaved";
+          statusEl.textContent = "Unsaved changes";
+        }
+      } else {
+        delete cardEl.dataset.isDirty;
+        if (statusEl && statusEl.classList.contains("is-unsaved")) {
+          statusEl.textContent = "";
+        }
+      }
+    };
+
+    cardEl._save = async () => {
+      if (!org.id) return false;
+      const newName = (nameInput?.value || "").trim();
+      if (!newName) {
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-error";
+          statusEl.textContent = "Title cannot be empty.";
+        }
+        return false;
+      }
+      const newWeb = (webInput?.value || "").trim();
+      const selectedTypes = Array.from(cardEl.querySelectorAll(`.org-types-pills input:checked`)).map(
+        (cb) => cb.value
+      );
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      if (statusEl) {
+        statusEl.className = "staff-inline-status is-saving";
+        statusEl.textContent = "Updating database...";
+      }
+
+      try {
+        const res = await fetch("/api/organisations/update", {
+          method: "PATCH",
+          headers: getStaffHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            id: org.id,
+            name: newName,
+            website: newWeb,
+            type: selectedTypes,
+            mainLocation: cardMainLoc,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to update organisation.");
+        }
+
+        updateOrgInLocalState(data.organisation);
+        delete cardEl.dataset.isDirty;
+
+        initialName = (data.organisation.name || "").trim();
+        initialWeb = (data.organisation.website || "").trim();
+        initialTypes = (Array.isArray(data.organisation.type) ? data.organisation.type : []).sort();
+        const updatedMainLoc =
+          Array.isArray(data.organisation.locations) && data.organisation.locations.length > 0
+            ? data.organisation.locations[0]
+            : null;
+        initialLocId = updatedMainLoc && updatedMainLoc.id ? Number(updatedMainLoc.id) : null;
+        initialLocName = updatedMainLoc && updatedMainLoc.name ? updatedMainLoc.name.trim() : "";
+        cardMainLoc = updatedMainLoc ? { ...updatedMainLoc } : null;
+
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-saved";
+          statusEl.textContent = "✓ Saved!";
+          setTimeout(() => {
+            if (statusEl && !cardEl.dataset.isDirty) statusEl.textContent = "";
+          }, 3000);
+        }
+
+        renderSelectedTags(document.getElementById("leadOrgsPicker_tags"), "leadOrganisations");
+        renderSelectedTags(document.getElementById("fundingOrgsPicker_tags"), "fundingOrganisations");
+        renderSelectedTags(document.getElementById("involvedOrgsPicker_tags"), "involvedOrganisations");
+        return true;
+      } catch (err) {
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-error";
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+        return false;
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "💾 Save Organisation Details";
+      }
+    };
+
+    if (nameInput) {
+      nameInput.addEventListener("input", checkAndShowDirty);
+    }
+    if (webInput) {
+      webInput.addEventListener("input", checkAndShowDirty);
+    }
+
+    const pills = cardEl.querySelectorAll(".org-type-pill");
+    pills.forEach((pill) => {
+      const checkbox = pill.querySelector("input[type='checkbox']");
+      checkbox?.addEventListener("change", () => {
+        pill.classList.toggle("is-selected", checkbox.checked);
+        checkAndShowDirty();
+      });
+    });
+
+    if (saveBtn && org.id) {
+      saveBtn.addEventListener("click", () => cardEl._save());
+    }
+  });
+}
+
+async function saveAllDirtyStaffOrganisations() {
+  const container = document.getElementById("staffOrgsTableContainer");
+  if (!container) return;
+  const cards = container.querySelectorAll(".staff-entity-card");
+  const savePromises = [];
+  cards.forEach((card) => {
+    if (typeof card._isDirty === "function" && card._isDirty() && typeof card._save === "function") {
+      savePromises.push(card._save());
+    }
+  });
+  if (savePromises.length > 0) {
+    await Promise.all(savePromises);
+    renderStaffLocationsList();
+  }
+}
+
+function renderStaffLocationsList() {
+  const container = document.getElementById("staffLocationsListContainer");
+  const countEl = document.getElementById("staffLocationsCount");
+  if (!container) return;
+
+  const locMap = new Map();
+
+  // 1. Participant locations
+  (state.participants || []).forEach((p, pIdx) => {
+    const pLabel = p.targetPopulation || p.description || `Group ${pIdx + 1}`;
+    (p.locations || []).forEach((l) => {
+      const key = l.id ? `id_${l.id}` : `name_${(l.name || "").toLowerCase()}`;
+      if (!locMap.has(key)) {
+        locMap.set(key, {
+          location: l,
+          participantTags: [pLabel],
+          orgTags: [],
+        });
+      } else {
+        const item = locMap.get(key);
+        if (!item.participantTags.includes(pLabel)) {
+          item.participantTags.push(pLabel);
+        }
+      }
+    });
+  });
+
+  // 2. Organisation locations
+  const allOrgs = [
+    ...(state.leadOrganisations || []).map((o) => ({ ...o, role: "Lead" })),
+    ...(state.fundingOrganisations || []).map((o) => ({ ...o, role: "Funder" })),
+    ...(state.involvedOrganisations || []).map((o) => ({ ...o, role: "Involved" })),
+  ];
+
+  allOrgs.forEach((org) => {
+    (org.locations || []).forEach((l) => {
+      const key = l.id ? `id_${l.id}` : `name_${(l.name || "").toLowerCase()}`;
+      const orgTag = `${org.name || "Organisation"} (Main Location)`;
+      if (!locMap.has(key)) {
+        locMap.set(key, {
+          location: l,
+          participantTags: [],
+          orgTags: [orgTag],
+        });
+      } else {
+        const item = locMap.get(key);
+        if (!item.orgTags.includes(orgTag)) {
+          item.orgTags.push(orgTag);
+        }
+      }
+    });
+  });
+
+  const locEntries = [...locMap.values()];
+  if (countEl) {
+    countEl.textContent = `${locEntries.length} location${locEntries.length === 1 ? "" : "s"}`;
+  }
+
+  if (locEntries.length === 0) {
+    container.innerHTML = `<p class="empty-note">No locations associated with this case yet. Add locations to participants or organisations above to edit them here.</p>`;
+    return;
+  }
+
+  container.innerHTML = locEntries
+    .map(({ location: loc, participantTags, orgTags }, index) => {
+      const locId = loc.id || null;
+      const pTagsHtml = participantTags
+        .map((t) => `<span class="loc-tag loc-tag-participant">👥 Participant: ${escapeHtml(t)}</span>`)
+        .join(" ");
+      const oTagsHtml = orgTags
+        .map((t) => `<span class="loc-tag loc-tag-org">🏢 Organisation: ${escapeHtml(t)}</span>`)
+        .join(" ");
+
+      const lat =
+        loc.latitude !== null && loc.latitude !== undefined && !isNaN(Number(loc.latitude))
+          ? Number(loc.latitude)
+          : "";
+      const lng =
+        loc.longitude !== null && loc.longitude !== undefined && !isNaN(Number(loc.longitude))
+          ? Number(loc.longitude)
+          : "";
+      const hasCoords = lat !== "" && lng !== "";
+      const mapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : "#";
+
+      const currentCc = (loc.countryCode || "").toUpperCase();
+      let countryOptionsHtml = "";
+      ISO_COUNTRY_CODES.forEach((c) => {
+        const isSel = c.code === currentCc;
+        countryOptionsHtml += `<option value="${c.code}" ${isSel ? "selected" : ""}>${escapeHtml(c.name)}</option>`;
+      });
+
+      return `
+        <div class="staff-entity-card" data-loc-id="${locId || ""}" data-loc-index="${index}">
+          <div class="staff-entity-card-header">
+            <div class="staff-entity-header-left">
+              <div class="loc-tags-row">
+                ${pTagsHtml}
+                ${oTagsHtml}
+              </div>
+              ${locId ? `<span class="staff-entity-id-tag">ID: #${locId}</span>` : `<span class="badge badge-amber">(Unsaved New Location)</span>`}
+            </div>
+            <div class="staff-entity-header-actions">
+              <span class="staff-inline-status" id="locStatus_${index}"></span>
+            </div>
+          </div>
+
+          <div class="staff-card-grid">
+            <div class="staff-field-group">
+              <label for="locNameInput_${index}">Location Name *</label>
+              <input type="text" id="locNameInput_${index}" value="${escapeHtml(loc.name || "")}" placeholder="e.g. Manchester, Greater Manchester">
+            </div>
+
+            <div class="staff-field-group">
+              <label for="locCountrySelect_${index}">Country Code</label>
+              <select id="locCountrySelect_${index}">
+                ${countryOptionsHtml}
+              </select>
+            </div>
+
+            <div class="staff-field-group">
+              <label for="locLatInput_${index}">Latitude</label>
+              <input type="number" step="any" id="locLatInput_${index}" value="${lat}" placeholder="e.g. 53.4808">
+            </div>
+
+            <div class="staff-field-group">
+              <label for="locLngInput_${index}">Longitude</label>
+              <input type="number" step="any" id="locLngInput_${index}" value="${lng}" placeholder="e.g. -2.2426">
+            </div>
+          </div>
+
+          <div class="staff-entity-footer">
+            <a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="btn-map-preview ${hasCoords ? "" : "is-disabled"}" id="locMapBtn_${index}" title="Open these coordinates in Google Maps">
+              🗺️ Open in Google Maps ↗
+            </a>
+            <button type="button" class="btn-staff-geocode" id="locGeocodeBtn_${index}" title="Re-run geocoding using location name and country code">
+              📍 Geocode
+            </button>
+            <button type="button" class="btn-staff-entity-save" id="saveLocBtn_${index}" ${!locId ? "disabled title='Save case changes first to assign a database ID'" : ""}>
+              💾 Save Location Details
+            </button>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  // Attach event listeners
+  locEntries.forEach(({ location: loc }, index) => {
+    const cardEl = container.querySelector(`[data-loc-index="${index}"]`);
+    if (!cardEl) return;
+
+    const nameInput = cardEl.querySelector(`#locNameInput_${index}`);
+    const countrySelect = cardEl.querySelector(`#locCountrySelect_${index}`);
+    const latInput = cardEl.querySelector(`#locLatInput_${index}`);
+    const lngInput = cardEl.querySelector(`#locLngInput_${index}`);
+    const mapBtn = cardEl.querySelector(`#locMapBtn_${index}`);
+    const geocodeBtn = cardEl.querySelector(`#locGeocodeBtn_${index}`);
+    const saveBtn = cardEl.querySelector(`#saveLocBtn_${index}`);
+    const statusEl = cardEl.querySelector(`#locStatus_${index}`);
+
+    let initialLocName = (loc.name || "").trim();
+    let initialCountryCode = (loc.countryCode || "").toUpperCase();
+    let initialLat =
+      loc.latitude !== null && loc.latitude !== undefined && !isNaN(Number(loc.latitude))
+        ? Number(loc.latitude)
+        : null;
+    let initialLng =
+      loc.longitude !== null && loc.longitude !== undefined && !isNaN(Number(loc.longitude))
+        ? Number(loc.longitude)
+        : null;
+
+    cardEl._isDirty = () => {
+      const curName = (nameInput?.value || "").trim();
+      const curCc = (countrySelect?.value || "").toUpperCase();
+      const rawLat = latInput?.value;
+      const rawLng = lngInput?.value;
+      const curLat = rawLat !== "" && !isNaN(Number(rawLat)) ? Number(rawLat) : null;
+      const curLng = rawLng !== "" && !isNaN(Number(rawLng)) ? Number(rawLng) : null;
+
+      if (curName !== initialLocName) return true;
+      if (curCc !== initialCountryCode) return true;
+      if (curLat !== initialLat) return true;
+      if (curLng !== initialLng) return true;
+      return false;
+    };
+
+    const checkAndShowDirty = () => {
+      const dirty = cardEl._isDirty();
+      if (dirty) {
+        cardEl.dataset.isDirty = "true";
+        if (statusEl && !statusEl.classList.contains("is-saving")) {
+          statusEl.className = "staff-inline-status is-unsaved";
+          statusEl.textContent = "Unsaved changes";
+        }
+      } else {
+        delete cardEl.dataset.isDirty;
+        if (statusEl && statusEl.classList.contains("is-unsaved")) {
+          statusEl.textContent = "";
+        }
+      }
+    };
+
+    const updateMapLink = () => {
+      const latVal = parseFloat(latInput?.value);
+      const lngVal = parseFloat(lngInput?.value);
+      if (!isNaN(latVal) && !isNaN(lngVal)) {
+        if (mapBtn) {
+          mapBtn.href = `https://www.google.com/maps?q=${latVal},${lngVal}`;
+          mapBtn.classList.remove("is-disabled");
+        }
+      } else {
+        if (mapBtn) {
+          mapBtn.href = "#";
+          mapBtn.classList.add("is-disabled");
+        }
+      }
+    };
+
+    if (geocodeBtn) {
+      geocodeBtn.addEventListener("click", async () => {
+        const queryName = (nameInput?.value || "").trim();
+        if (!queryName) {
+          if (statusEl) {
+            statusEl.className = "staff-inline-status is-error";
+            statusEl.textContent = "Please enter a location name first.";
+          }
+          nameInput?.focus();
+          return;
+        }
+
+        const selectedCc = (countrySelect?.value || "").trim();
+
+        geocodeBtn.disabled = true;
+        geocodeBtn.textContent = "Geocoding...";
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-saving";
+          statusEl.textContent = `Looking up "${queryName}"${selectedCc ? ` in ${selectedCc}` : ""}...`;
+        }
+
+        try {
+          let geocodeUrl = `/api/locations?geocode=1&q=${encodeURIComponent(queryName)}`;
+          if (selectedCc) {
+            geocodeUrl += `&countryCode=${encodeURIComponent(selectedCc)}`;
+          }
+
+          const res = await fetch(geocodeUrl);
+          const data = await res.json();
+
+          if (data && data.geocoded) {
+            const { latitude, longitude, countryCode: resCc } = data.geocoded;
+
+            if (latitude != null && longitude != null) {
+              if (latInput) latInput.value = latitude;
+              if (lngInput) lngInput.value = longitude;
+
+              if (resCc && countrySelect && !countrySelect.value) {
+                countrySelect.value = resCc.toUpperCase();
+              }
+
+              updateMapLink();
+              checkAndShowDirty();
+
+              if (statusEl) {
+                statusEl.className = "staff-inline-status is-saved";
+                statusEl.textContent = `✓ Geocoded: ${Number(latitude).toFixed(4)}, ${Number(longitude).toFixed(4)}${resCc ? ` (${resCc})` : ""}`;
+                setTimeout(() => {
+                  if (statusEl && cardEl.dataset.isDirty) {
+                    statusEl.className = "staff-inline-status is-unsaved";
+                    statusEl.textContent = "Unsaved changes";
+                  }
+                }, 3500);
+              }
+            } else {
+              throw new Error("No coordinates returned.");
+            }
+          } else {
+            if (statusEl) {
+              statusEl.className = "staff-inline-status is-error";
+              statusEl.textContent = `No geocode results for "${queryName}"${selectedCc ? ` in ${selectedCc}` : ""}. Try refining the name.`;
+            }
+          }
+        } catch (err) {
+          if (statusEl) {
+            statusEl.className = "staff-inline-status is-error";
+            statusEl.textContent = `Geocode failed: ${err.message}`;
+          }
+        } finally {
+          geocodeBtn.disabled = false;
+          geocodeBtn.textContent = "📍 Geocode";
+        }
+      });
+    }
+
+    cardEl._save = async () => {
+      if (!loc.id) return false;
+      const newName = (nameInput?.value || "").trim();
+      if (!newName) {
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-error";
+          statusEl.textContent = "Location name cannot be empty.";
+        }
+        return false;
+      }
+
+      const newCc = (countrySelect?.value || "").trim();
+      const rawLat = latInput?.value;
+      const rawLng = lngInput?.value;
+      const newLat = rawLat !== "" && !isNaN(Number(rawLat)) ? Number(rawLat) : null;
+      const newLng = rawLng !== "" && !isNaN(Number(rawLng)) ? Number(rawLng) : null;
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving...";
+      if (statusEl) {
+        statusEl.className = "staff-inline-status is-saving";
+        statusEl.textContent = "Updating database...";
+      }
+
+      try {
+        const res = await fetch("/api/locations/update", {
+          method: "PATCH",
+          headers: getStaffHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({
+            id: loc.id,
+            name: newName,
+            latitude: newLat,
+            longitude: newLng,
+            countryCode: newCc,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Failed to update location.");
+        }
+
+        updateLocationInLocalState(data.location);
+        delete cardEl.dataset.isDirty;
+
+        initialLocName = (data.location.name || "").trim();
+        initialCountryCode = (data.location.countryCode || "").toUpperCase();
+        initialLat = data.location.latitude;
+        initialLng = data.location.longitude;
+
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-saved";
+          statusEl.textContent = "✓ Saved!";
+          setTimeout(() => {
+            if (statusEl && !cardEl.dataset.isDirty) statusEl.textContent = "";
+          }, 3000);
+        }
+
+        renderParticipantsList();
+        return true;
+      } catch (err) {
+        if (statusEl) {
+          statusEl.className = "staff-inline-status is-error";
+          statusEl.textContent = `Error: ${err.message}`;
+        }
+        return false;
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "💾 Save Location Details";
+      }
+    };
+
+    nameInput?.addEventListener("input", checkAndShowDirty);
+    countrySelect?.addEventListener("change", checkAndShowDirty);
+    latInput?.addEventListener("input", () => {
+      updateMapLink();
+      checkAndShowDirty();
+    });
+    lngInput?.addEventListener("input", () => {
+      updateMapLink();
+      checkAndShowDirty();
+    });
+
+    if (saveBtn && loc.id) {
+      saveBtn.addEventListener("click", () => cardEl._save());
+    }
+  });
+}
+
+async function saveAllDirtyStaffLocations() {
+  const container = document.getElementById("staffLocationsListContainer");
+  if (!container) return;
+  const cards = container.querySelectorAll(".staff-entity-card");
+  const savePromises = [];
+  cards.forEach((card) => {
+    if (typeof card._isDirty === "function" && card._isDirty() && typeof card._save === "function") {
+      savePromises.push(card._save());
+    }
+  });
+  if (savePromises.length > 0) {
+    await Promise.all(savePromises);
+    renderParticipantsList();
+  }
 }
 
 function initResourceManager() {
@@ -2034,6 +3054,9 @@ function renderResourcesList(listEl) {
 
     listEl.appendChild(card);
   });
+  if (state.staffUser) {
+    renderStaffLocationsList();
+  }
 }
 
 /* -------------------------------------------------------------
@@ -2183,6 +3206,382 @@ function renderPhotosGallery() {
     });
 
     galleryEl.appendChild(card);
+  });
+}
+
+/* -------------------------------------------------------------
+ * 5c. Staff Method Image & Caption Manager (Stage 2)
+ * ------------------------------------------------------------- */
+function renderMethodImageUI() {
+  const previewCard = document.getElementById("methodImagePreview");
+  const dropzone = document.getElementById("methodImageDropzone");
+  const captionInput = document.getElementById("methodImageCaptionInput");
+
+  if (captionInput) {
+    captionInput.value = state.methodImageCaption || "";
+  }
+
+  if (!previewCard) return;
+
+  if (Array.isArray(state.methodImage) && state.methodImage.length > 0) {
+    const item = state.methodImage[0];
+    const imgUrl = item.thumbUrl || item.url || item.rawUrl || "";
+    const title = item.title || item.name || "Method Image";
+
+    previewCard.innerHTML = `
+      <img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(title)}" class="method-image-thumb">
+      <div class="method-image-meta">
+        <div class="method-image-filename" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <a href="${escapeHtml(item.url || imgUrl)}" target="_blank" rel="noopener noreferrer">View full size &rarr;</a>
+      </div>
+      <button type="button" id="removeMethodImageBtn" class="btn-remove-method-image" title="Remove method image">
+        &times; Remove
+      </button>
+    `;
+    previewCard.classList.remove("hidden");
+    dropzone?.classList.add("hidden");
+
+    document.getElementById("removeMethodImageBtn")?.addEventListener("click", () => {
+      state.methodImage = [];
+      renderMethodImageUI();
+      refreshDirtyStateUI();
+      if (state.isEditMode) {
+        saveEditChanges({ scopes: ["case"] });
+      }
+      if (window.PaveLivePreview && typeof window.PaveLivePreview.triggerUpdate === "function") {
+        window.PaveLivePreview.triggerUpdate();
+      }
+    });
+  } else {
+    previewCard.innerHTML = "";
+    previewCard.classList.add("hidden");
+    dropzone?.classList.remove("hidden");
+  }
+}
+
+function initMethodImageManager() {
+  const dropzone = document.getElementById("methodImageDropzone");
+  const fileInput = document.getElementById("methodImageFileInput");
+  const triggerBtn = document.getElementById("triggerMethodImageBtn");
+  const statusEl = document.getElementById("methodImageUploadStatus");
+  const captionInput = document.getElementById("methodImageCaptionInput");
+
+  if (!dropzone || !fileInput) return;
+
+  function setStatus(text, type = "info") {
+    if (!statusEl) return;
+    if (!text) {
+      statusEl.textContent = "";
+      statusEl.className = "upload-status-bar hidden";
+      return;
+    }
+    statusEl.textContent = text;
+    statusEl.className = `upload-status-bar is-${type}`;
+  }
+
+  async function handleMethodFile(file) {
+    if (!file || file.size === 0) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setStatus("⚠ File exceeds the 20 MB size limit.", "error");
+      return;
+    }
+
+    setStatus("Uploading method image...", "loading");
+    if (triggerBtn) triggerBtn.disabled = true;
+
+    try {
+      const uploaded = await uploadFilesToApi([file], "method-image");
+      if (uploaded.length > 0) {
+        state.methodImage = [uploaded[0]];
+        renderMethodImageUI();
+        setStatus("Method image uploaded successfully.", "success");
+        setTimeout(() => setStatus(""), 3000);
+        refreshDirtyStateUI();
+        if (state.isEditMode) {
+          saveEditChanges({ scopes: ["case"] });
+        }
+        if (window.PaveLivePreview && typeof window.PaveLivePreview.triggerUpdate === "function") {
+          window.PaveLivePreview.triggerUpdate();
+        }
+      }
+    } catch (err) {
+      setStatus(`Upload failed: ${err.message}`, "error");
+    } finally {
+      if (triggerBtn) triggerBtn.disabled = false;
+      fileInput.value = "";
+    }
+  }
+
+  triggerBtn?.addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files[0]) {
+      handleMethodFile(fileInput.files[0]);
+    }
+  });
+
+  dropzone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    dropzone.classList.add("drag-over");
+  });
+
+  dropzone.addEventListener("dragleave", () => {
+    dropzone.classList.remove("drag-over");
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    dropzone.classList.remove("drag-over");
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleMethodFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  if (captionInput) {
+    captionInput.addEventListener("input", (e) => {
+      state.methodImageCaption = e.target.value;
+      refreshDirtyStateUI();
+      if (window.PaveLivePreview && typeof window.PaveLivePreview.triggerUpdate === "function") {
+        window.PaveLivePreview.triggerUpdate();
+      }
+    });
+  }
+
+  renderMethodImageUI();
+}
+
+/* -------------------------------------------------------------
+ * 5d. Simple Markdown Rich Text Editor Component
+ * ------------------------------------------------------------- */
+function formatMarkdownText(textarea, before, after = "", defaultText = "") {
+  if (!textarea) return;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+  const selected = val.substring(start, end);
+
+  let replacement = "";
+  let newStart = start;
+  let newEnd = end;
+
+  if (selected.length > 0) {
+    // If text is already surrounded with formatting, unwrap it (toggle)
+    if (
+      val.substring(start - before.length, start) === before &&
+      val.substring(end, end + after.length) === after
+    ) {
+      textarea.value = val.substring(0, start - before.length) + selected + val.substring(end + after.length);
+      newStart = start - before.length;
+      newEnd = end - before.length;
+    } else {
+      replacement = before + selected + after;
+      textarea.value = val.substring(0, start) + replacement + val.substring(end);
+      newStart = start + before.length;
+      newEnd = start + before.length + selected.length;
+    }
+  } else {
+    const textToInsert = defaultText || "text";
+    replacement = before + textToInsert + after;
+    textarea.value = val.substring(0, start) + replacement + val.substring(end);
+    newStart = start + before.length;
+    newEnd = start + before.length + textToInsert.length;
+  }
+
+  textarea.focus();
+  textarea.setSelectionRange(newStart, newEnd);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function formatMarkdownLines(textarea, prefix) {
+  if (!textarea) return;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const val = textarea.value;
+
+  const lineStart = val.lastIndexOf("\n", start - 1) + 1;
+  let lineEnd = val.indexOf("\n", end);
+  if (lineEnd === -1) lineEnd = val.length;
+
+  const lines = val.substring(lineStart, lineEnd).split("\n");
+  const allPrefixed = lines.every((l) => l.startsWith(prefix));
+
+  const newLines = lines.map((l, idx) => {
+    if (allPrefixed) {
+      return l.substring(prefix.length);
+    }
+    if (prefix === "1. ") {
+      return `${idx + 1}. ${l.replace(/^\d+\.\s*/, "")}`;
+    }
+    return `${prefix}${l.replace(/^[-*>\s]+/, "")}`;
+  });
+
+  const replacement = newLines.join("\n");
+  textarea.value = val.substring(0, lineStart) + replacement + val.substring(lineEnd);
+  textarea.focus();
+  textarea.setSelectionRange(lineStart, lineStart + replacement.length);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function insertMarkdownLink(textarea) {
+  if (!textarea) return;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const selected = textarea.value.substring(start, end);
+  const title = selected || "link title";
+  const url = prompt("Enter link URL (e.g. https://example.com):", "https://");
+  if (!url) return;
+
+  const linkMd = `[${title}](${url.trim()})`;
+  textarea.value = textarea.value.substring(0, start) + linkMd + textarea.value.substring(end);
+  textarea.focus();
+  textarea.setSelectionRange(start + 1, start + 1 + title.length);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function renderMarkdownPreview(mdText) {
+  if (!mdText || !mdText.trim()) return '<em style="color: #94a3b8;">Nothing to preview</em>';
+  let html = escapeHtml(mdText);
+
+  // Headers
+  html = html.replace(/^### (.*$)/gim, "<h3>$1</h3>");
+  html = html.replace(/^## (.*$)/gim, "<h2>$1</h2>");
+  html = html.replace(/^# (.*$)/gim, "<h1>$1</h1>");
+
+  // Bold & Italic
+  html = html.replace(/\*\*\*(.*?)\*\*\*/gim, "<strong><em>$1</em></strong>");
+  html = html.replace(/\*\*(.*?)\*\*/gim, "<strong>$1</strong>");
+  html = html.replace(/\*(.*?)\*/gim, "<em>$1</em>");
+
+  // Blockquotes
+  html = html.replace(/^\> (.*$)/gim, "<blockquote>$1</blockquote>");
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/gim, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+  // Bullet and numbered lists
+  html = html.replace(/^\s*[-*]\s+(.*$)/gim, "<li>$1</li>");
+  html = html.replace(/^\s*\d+\.\s+(.*$)/gim, "<li>$1</li>");
+  html = html.replace(/(<li>.*<\/li>)/gims, "<ul>$1</ul>");
+  html = html.replace(/<\/ul>\s*<ul>/gim, "");
+
+  // Paragraphs
+  const paragraphs = html.split(/\n{2,}/);
+  html = paragraphs
+    .map((p) => {
+      const trimmed = p.trim();
+      if (!trimmed) return "";
+      if (trimmed.startsWith("<h") || trimmed.startsWith("<ul") || trimmed.startsWith("<blockquote")) {
+        return trimmed;
+      }
+      return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  return html;
+}
+
+function initRichTextEditors() {
+  const textareas = document.querySelectorAll("textarea.rich-textarea");
+  textareas.forEach((textarea) => {
+    if (textarea.dataset.richInit === "true") return;
+    textarea.dataset.richInit = "true";
+
+    // Ensure rows is at least 6
+    if (!textarea.getAttribute("rows") || parseInt(textarea.getAttribute("rows"), 10) < 6) {
+      textarea.setAttribute("rows", "6");
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "rich-editor-wrapper";
+    textarea.parentNode.insertBefore(wrapper, textarea);
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "rich-editor-toolbar";
+    toolbar.innerHTML = `
+      <div class="rich-toolbar-left" role="toolbar" aria-label="Text formatting">
+        <button type="button" class="rich-toolbar-btn btn-bold" title="Bold (**text**)" aria-label="Bold"><strong>B</strong></button>
+        <button type="button" class="rich-toolbar-btn btn-italic" title="Italic (*text*)" aria-label="Italic"><em>I</em></button>
+        <button type="button" class="rich-toolbar-btn btn-heading" title="Heading (### text)" aria-label="Heading">H</button>
+        <span class="rich-toolbar-divider" aria-hidden="true"></span>
+        <button type="button" class="rich-toolbar-btn btn-bullet" title="Bulleted list (- item)" aria-label="Bullet list">•</button>
+        <button type="button" class="rich-toolbar-btn btn-numbered" title="Numbered list (1. item)" aria-label="Numbered list">1.</button>
+        <button type="button" class="rich-toolbar-btn btn-quote" title="Blockquote (> quote)" aria-label="Quote">&rdquo;</button>
+        <button type="button" class="rich-toolbar-btn btn-link" title="Link ([title](url))" aria-label="Link">🔗</button>
+      </div>
+      <div class="rich-toolbar-tabs" role="tablist" aria-label="Editor modes">
+        <button type="button" class="rich-tab-btn tab-write is-active" role="tab" aria-selected="true">Write</button>
+        <button type="button" class="rich-tab-btn tab-preview" role="tab" aria-selected="false">Preview</button>
+      </div>
+    `;
+
+    const preview = document.createElement("div");
+    preview.className = "rich-editor-preview hidden";
+    preview.setAttribute("role", "tabpanel");
+
+    wrapper.appendChild(toolbar);
+    wrapper.appendChild(textarea);
+    wrapper.appendChild(preview);
+
+    const btnBold = toolbar.querySelector(".btn-bold");
+    const btnItalic = toolbar.querySelector(".btn-italic");
+    const btnHeading = toolbar.querySelector(".btn-heading");
+    const btnBullet = toolbar.querySelector(".btn-bullet");
+    const btnNumbered = toolbar.querySelector(".btn-numbered");
+    const btnQuote = toolbar.querySelector(".btn-quote");
+    const btnLink = toolbar.querySelector(".btn-link");
+    const tabWrite = toolbar.querySelector(".tab-write");
+    const tabPreview = toolbar.querySelector(".tab-preview");
+
+    btnBold?.addEventListener("click", () => formatMarkdownText(textarea, "**", "**", "bold text"));
+    btnItalic?.addEventListener("click", () => formatMarkdownText(textarea, "*", "*", "italic text"));
+    btnHeading?.addEventListener("click", () => formatMarkdownLines(textarea, "### "));
+    btnBullet?.addEventListener("click", () => formatMarkdownLines(textarea, "- "));
+    btnNumbered?.addEventListener("click", () => formatMarkdownLines(textarea, "1. "));
+    btnQuote?.addEventListener("click", () => formatMarkdownLines(textarea, "> "));
+    btnLink?.addEventListener("click", () => insertMarkdownLink(textarea));
+
+    tabWrite?.addEventListener("click", () => {
+      tabWrite.classList.add("is-active");
+      tabWrite.setAttribute("aria-selected", "true");
+      tabPreview?.classList.remove("is-active");
+      tabPreview?.setAttribute("aria-selected", "false");
+      textarea.classList.remove("hidden");
+      preview.classList.add("hidden");
+      textarea.focus();
+    });
+
+    tabPreview?.addEventListener("click", () => {
+      tabPreview.classList.add("is-active");
+      tabPreview.setAttribute("aria-selected", "true");
+      tabWrite?.classList.remove("is-active");
+      tabWrite?.setAttribute("aria-selected", "false");
+      preview.innerHTML = renderMarkdownPreview(textarea.value);
+      textarea.classList.add("hidden");
+      preview.classList.remove("hidden");
+    });
+
+    // Switch back to Write mode if HTML5 validation triggers on hidden textarea
+    textarea.addEventListener("invalid", () => {
+      tabWrite?.click();
+    });
+
+    // Keyboard shortcuts
+    textarea.addEventListener("keydown", (e) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      if (isCmdOrCtrl && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        formatMarkdownText(textarea, "**", "**", "bold text");
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        formatMarkdownText(textarea, "*", "*", "italic text");
+      } else if (isCmdOrCtrl && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        insertMarkdownLink(textarea);
+      }
+    });
   });
 }
 
@@ -2566,8 +3965,13 @@ function buildSubmissionPayload(scopes = null) {
     resources: state.resources,
     photosAvailable: getCheckedValues("photosAvailable"),
     photosAndImages: state.photosAndImages,
+    methodImage: state.methodImage,
+    methodImageCaption: (document.getElementById("methodImageCaptionInput")?.value || state.methodImageCaption || "").trim(),
     workflowStatus: state.staffCanEdit
       ? document.getElementById("staffWorkflowStatus")?.value || undefined
+      : undefined,
+    curationDecision: state.staffCanEdit
+      ? document.getElementById("staffCurationDecision")?.value ?? ""
       : undefined,
     assignedTo: state.staffCanEdit
       ? (() => {
@@ -2613,7 +4017,13 @@ function getScopeSnapshots() {
         rawUrl: img.rawUrl || img.url || "",
         title: img.title || "",
       })),
+      methodImage: (p.methodImage || []).map((img) => ({
+        rawUrl: img.rawUrl || img.url || "",
+        title: img.title || "",
+      })),
+      methodImageCaption: p.methodImageCaption || "",
       workflowStatus: p.workflowStatus || "",
+      curationDecision: p.curationDecision || "",
       assignedTo: p.assignedTo || [],
     }),
     organisations: JSON.stringify({
@@ -2754,6 +4164,11 @@ async function saveEditChanges(options = {}) {
     return { queued: true };
   }
 
+  if (state.staffUser) {
+    await saveAllDirtyStaffOrganisations();
+    await saveAllDirtyStaffLocations();
+  }
+
   const scopesToSave =
     dirtyScopes.length > 0
       ? dirtyScopes
@@ -2833,6 +4248,10 @@ async function saveEditChanges(options = {}) {
       if (bannerSubtitle) {
         bannerSubtitle.textContent = `Status: ${payload.workflowStatus}. Changes are saved automatically as you move between stages.`;
       }
+      state.workflowStatus = payload.workflowStatus;
+    }
+    if (payload.curationDecision !== undefined) {
+      state.curationDecision = payload.curationDecision;
     }
 
     // Refresh drawer revision history in background if staff user is signed in
@@ -2847,6 +4266,9 @@ async function saveEditChanges(options = {}) {
             state.revisions = actData.revisions || state.revisions;
             state.activityWarning = actData.permissionWarning || null;
             renderDrawerContents();
+      renderStaffOrganisationsTable();
+      renderStaffLocationsList();
+      renderMethodImageUI();
           }
         })
         .catch(() => {});
@@ -2877,6 +4299,7 @@ function initEditAutoSaveControls() {
   const saveNowBtn = document.getElementById("editSaveNowBtn");
   const workflowSelect = document.getElementById("staffWorkflowStatus");
   const assignedSelect = document.getElementById("staffAssignedTo");
+  const curationSelect = document.getElementById("staffCurationDecision");
 
   if (saveNowBtn) {
     saveNowBtn.addEventListener("click", () => {
@@ -2894,6 +4317,23 @@ function initEditAutoSaveControls() {
 
   if (assignedSelect) {
     assignedSelect.addEventListener("change", () => {
+      if (state.isEditMode) {
+        saveEditChanges({ scopes: ["case"] });
+      }
+    });
+  }
+
+  if (curationSelect) {
+    curationSelect.addEventListener("change", () => {
+      if (state.isEditMode) {
+        saveEditChanges({ scopes: ["case"] });
+      }
+    });
+  }
+
+  const methodCaptionInput = document.getElementById("methodImageCaptionInput");
+  if (methodCaptionInput) {
+    methodCaptionInput.addEventListener("change", () => {
       if (state.isEditMode) {
         saveEditChanges({ scopes: ["case"] });
       }

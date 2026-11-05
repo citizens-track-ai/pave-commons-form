@@ -1,16 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Share a Casebook Entry - Public AI Voices & Engagement (PAVE)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
   <div class="container">
     <header class="app-header">
@@ -23,13 +29,16 @@
           <button type="button" id="topMenuAboutBtn" class="top-menu-link is-active" aria-pressed="true">About</button>
           <span class="top-menu-divider" aria-hidden="true"></span>
           <a href="/" id="topMenuNewEntryBtn" class="top-menu-link">New entry</a>
+          <span id="topMenuKanbanDivider" class="top-menu-divider hidden" aria-hidden="true"></span>
+          <a href="/kanban" id="topMenuKanbanBtn" class="top-menu-link hidden" title="View workflow kanban board">Kanban</a>
           <span class="top-menu-divider" aria-hidden="true"></span>
           <button type="button" id="staffLoginBtn" class="top-menu-link">Sign in</button>
         </nav>
         <div id="staffActiveBadge" class="staff-active-badge hidden">
           <span class="staff-dot" aria-hidden="true"></span>
           <span id="staffUserLabel">Signed in</span>
-          <button type="button" id="staffLogoutBtn" class="btn-staff-logout" title="Sign out of NocoDB staff session">Sign out</button>
+          <button type="button" id="staffLogoutBtn" class="btn-staff-logout"
+            title="Sign out of NocoDB staff session">Sign out</button>
         </div>
       </div>
     </header>
@@ -45,31 +54,47 @@
           </span>
         </div>
         <strong id="editBannerTitle">Editing Case</strong>
-        <p id="editBannerSubtitle">You are modifying an existing case entry. Changes are saved automatically as you move between stages.</p>
+        <p id="editBannerSubtitle">You are modifying an existing case entry. Changes are saved automatically as you move
+          between stages.</p>
         <div id="staffWorkflowRow" class="staff-workflow-row hidden">
-          <div class="staff-control-item">
-            <label for="staffWorkflowStatus">Workflow Status:</label>
-            <select id="staffWorkflowStatus" class="staff-workflow-select">
-              <option value="Nomination">Nomination</option>
-              <option value="Submission">Submission</option>
-              <option value="Draft">Draft</option>
-              <option value="Under Review">Under Review</option>
-              <option value="Completed">Completed</option>
-              <option value="Rejected">Rejected</option>
-              <option value="Duplicate">Duplicate</option>
-            </select>
+          <div class="staff-workflow-line">
+            <div class="staff-control-item">
+              <label for="staffWorkflowStatus">Workflow Status:</label>
+              <select id="staffWorkflowStatus" class="staff-workflow-select">
+                <option value="Nomination">Nomination</option>
+                <option value="Submission">Submission</option>
+                <option value="Draft">Draft</option>
+                <option value="Under Review">Under Review</option>
+                <option value="Completed">Completed</option>
+                <option value="Rejected">Rejected</option>
+                <option value="Duplicate">Duplicate</option>
+              </select>
+            </div>
+            <span class="staff-control-divider" aria-hidden="true"></span>
+            <div class="staff-control-item">
+              <label for="staffAssignedTo">Assigned to:</label>
+              <select id="staffAssignedTo" class="staff-workflow-select">
+                <option value="">Unassigned</option>
+              </select>
+            </div>
+            <span class="staff-control-divider" aria-hidden="true"></span>
+            <button type="button" id="openDrawerBtn" class="btn-staff-drawer-toggle" aria-expanded="false"
+              title="Toggle Comments &amp; History drawer">
+              💬 Comments &amp; History <span id="drawerCountBadge" class="drawer-count-badge">0</span>
+            </button>
           </div>
-          <span class="staff-control-divider" aria-hidden="true"></span>
-          <div class="staff-control-item">
-            <label for="staffAssignedTo">Assigned to:</label>
-            <select id="staffAssignedTo" class="staff-workflow-select">
-              <option value="">Unassigned</option>
-            </select>
+          <div class="staff-workflow-line staff-workflow-subline">
+            <div class="staff-control-item">
+              <label for="staffCurationDecision">Curation Status:</label>
+              <select id="staffCurationDecision" class="staff-workflow-select">
+                <option value="">-- None / Undecided --</option>
+                <option value="Featured Full Case">Featured Full Case</option>
+                <option value="Full Case">Full Case</option>
+                <option value="Mapping Entry">Mapping Entry</option>
+                <option value="Do not include">Do not include</option>
+              </select>
+            </div>
           </div>
-          <span class="staff-control-divider" aria-hidden="true"></span>
-          <button type="button" id="openDrawerBtn" class="btn-staff-drawer-toggle" aria-expanded="false" title="Toggle Comments &amp; History drawer">
-            💬 Comments &amp; History <span id="drawerCountBadge" class="drawer-count-badge">0</span>
-          </button>
         </div>
       </div>
       <div class="edit-banner-actions">
@@ -83,18 +108,23 @@
     <section id="aboutIntroSection" class="about-landing-section" aria-label="About the PAVE Case Book">
       <div class="about-content-body">
         <p class="about-lead-question">
-          Do you have a project that demonstrates public voice and engagement around AI that should be included in the <a href="https://www.pavecasebook.org" target="_blank" rel="noopener noreferrer">PAVE Case Book</a>?
+          Do you have a project that demonstrates public voice and engagement around AI that should be included in the
+          <a href="https://www.pavecasebook.org" target="_blank" rel="noopener noreferrer">PAVE Case Book</a>?
         </p>
         <p>The case book includes entries:</p>
         <ul>
-          <li>Mapping engagement &ndash; showcasing outputs from dialogue, deliberation and participatory processes across the world.</li>
-          <li>Describing methods &ndash; exploring approaches for inclusive, informed and impactful public participation on AI.</li>
-          <li>Sharing learning and good practices &ndash; demonstrating how public voices can shape the future of AI.</li>
+          <li>Mapping engagement &ndash; showcasing outputs from dialogue, deliberation and participatory processes
+            across the world.</li>
+          <li>Describing methods &ndash; exploring approaches for inclusive, informed and impactful public participation
+            on AI.</li>
+          <li>Sharing learning and good practices &ndash; demonstrating how public voices can shape the future of AI.
+          </li>
         </ul>
 
         <h2>How can you contribute?</h2>
         <p>
-          If you have been involved in running or researching a public engagement project that explored the development, governance or use of artificial intelligence, anywhere in the world, we want to hear from you.
+          If you have been involved in running or researching a public engagement project that explored the development,
+          governance or use of artificial intelligence, anywhere in the world, we want to hear from you.
         </p>
         <ul>
           <li>Nominate a project that our research team should document</li>
@@ -107,18 +137,27 @@
             <div class="about-disclosure-body">
               <p>Submissions are reviewed by the PAVE Team.</p>
               <ul>
-                <li>For nominations, we may reach out to ask you for more details, or may carry out desk-research to populate case study details;</li>
+                <li>For nominations, we may reach out to ask you for more details, or may carry out desk-research to
+                  populate case study details;</li>
                 <li>For full submissions, we will review your entry and suggest any editorial updates.</li>
               </ul>
               <p>After submissions have been reviewed by the team, they may be included in the PAVE Case Book as:</p>
               <ul>
-                <li>Mapping entries &ndash; providing basic Who, What, Where information about a public voice and engagement project</li>
-                <li>Full cases &ndash; including more detailed information about the methodology and outputs from the project</li>
-                <li>Featured cases &ndash; selected to represent a range of approaches and communities engaged through public engagement on AI</li>
+                <li>Mapping entries &ndash; providing basic Who, What, Where information about a public voice and
+                  engagement project</li>
+                <li>Full cases &ndash; including more detailed information about the methodology and outputs from the
+                  project</li>
+                <li>Featured cases &ndash; selected to represent a range of approaches and communities engaged through
+                  public engagement on AI</li>
               </ul>
               <p>If your submission is not included, we will write to let you know.</p>
               <p>
-                The PAVE Case Book forms a part of the <a href="https://www.citizens-track.org" target="_blank" rel="noopener noreferrer">Citizens' Track on AI</a>, and we will be seeking opportunities over the coming year to showcase examples of public engagement from the case book &ndash; and to carry out analysis and synthesis of messages from included cases. This builds on a <a href="https://citizens-track.org/2026/07/11/citizens-track-update.html" target="_blank" rel="noopener noreferrer">prototype showcase of the PAVE Case Book at AI for Good 2026</a>.
+                The PAVE Case Book forms a part of the <a href="https://www.citizens-track.org" target="_blank"
+                  rel="noopener noreferrer">Citizens' Track on AI</a>, and we will be seeking opportunities over the
+                coming year to showcase examples of public engagement from the case book &ndash; and to carry out
+                analysis and synthesis of messages from included cases. This builds on a <a
+                  href="https://citizens-track.org/2026/07/11/citizens-track-update.html" target="_blank"
+                  rel="noopener noreferrer">prototype showcase of the PAVE Case Book at AI for Good 2026</a>.
               </p>
             </div>
           </details>
@@ -127,10 +166,13 @@
             <summary>About the team</summary>
             <div class="about-disclosure-body">
               <p>
-                The Public AI Voices &amp; Engagement (PAVE) Case Book project is supported and co-hosted by the University of Sheffield’s Centre for Machine Intelligence, Ada Lovelace Institute, Connected by Data, the Citizens Track on AI, ISWE Foundation &amp; partners.
+                The Public AI Voices &amp; Engagement (PAVE) Case Book project is supported and co-hosted by the
+                University of Sheffield’s Centre for Machine Intelligence, Ada Lovelace Institute, Connected by Data,
+                the Citizens Track on AI, ISWE Foundation &amp; partners.
               </p>
               <p>
-                The project is led by Dr Susan Oman, Tim Davies and Octavia Field-Reid and supported by a team including Dr Emily Rempel, Canning Malkin, Dr Erin McCloskey and Dr Emrys Schoemaker.
+                The project is led by Dr Susan Oman, Tim Davies and Octavia Field-Reid and supported by a team including
+                Dr Emily Rempel, Canning Malkin, Dr Erin McCloskey and Dr Emrys Schoemaker.
               </p>
             </div>
           </details>
@@ -139,25 +181,38 @@
             <summary>Data Protection Statement</summary>
             <div class="about-disclosure-body">
               <p>
-                All information submitted by this form will be held by <a href="https://connectedbydata.org/policies/data-protection" target="_blank" rel="noopener noreferrer">Connected by Data according to our data protection policy</a>. Access to the database containing submissions may be shared with approved project partners on the basis of signed data processing agreements.
+                All information submitted by this form will be held by <a
+                  href="https://connectedbydata.org/policies/data-protection" target="_blank"
+                  rel="noopener noreferrer">Connected by Data according to our data protection policy</a>. Access to the
+                database containing submissions may be shared with approved project partners on the basis of signed data
+                processing agreements.
               </p>
               <p>
-                With the exception of personal contact information, we may publish any of the information submitted to the PAVE casebook as part of the PAVE Website, printed resources or expo displays. We may make edits to information provided.
+                With the exception of personal contact information, we may publish any of the information submitted to
+                the PAVE casebook as part of the PAVE Website, printed resources or expo displays. We may make edits to
+                information provided.
               </p>
               <p>
-                By submitting original content or analysis through this form you grant Connected by Data and its partners permission to use and re-use that content, in part or in full.
+                By submitting original content or analysis through this form you grant Connected by Data and its
+                partners permission to use and re-use that content, in part or in full.
               </p>
               <p>
                 Information on cases may be published as part of an open dataset, under an open license.
               </p>
               <p>
-                You may choose during your submission whether or not you wish to be acknowledged as a contributor. You can let us know at any time if you want to change how you are acknowledged in materials going forward.
+                You may choose during your submission whether or not you wish to be acknowledged as a contributor. You
+                can let us know at any time if you want to change how you are acknowledged in materials going forward.
               </p>
               <p>
-                If you upload photos in your submission, you must confirm that the appropriate consents are in place for those photos to be republished. We will only use images in association with the case study they relate to unless otherwise agreed in writing.
+                If you upload photos in your submission, you must confirm that the appropriate consents are in place for
+                those photos to be republished. We will only use images in association with the case study they relate
+                to unless otherwise agreed in writing.
               </p>
               <p>
-                If you upload documents as part of your submission, you agree that these may be republished as part of the PAVE website. Please ask us if you would prefer that we do not upload, and instead link to original copies on project websites, and we will endeavour to do this. Note that links to the original documents can be made available by way of a citation.
+                If you upload documents as part of your submission, you agree that these may be republished as part of
+                the PAVE website. Please ask us if you would prefer that we do not upload, and instead link to original
+                copies on project websites, and we will endeavour to do this. Note that links to the original documents
+                can be made available by way of a citation.
               </p>
             </div>
           </details>
@@ -174,7 +229,8 @@
       <input type="hidden" id="editKey" name="editKey">
 
       <div id="backToAboutRow" class="back-to-about-row">
-        <button type="button" id="backToAboutBtn" class="btn-secondary btn-sm">&larr; Back to About &amp; Data Protection</button>
+        <button type="button" id="backToAboutBtn" class="btn-secondary btn-sm">&larr; Back to About &amp; Data
+          Protection</button>
       </div>
 
       <!-- Intent: What would you like to do? -->
@@ -200,7 +256,8 @@
             <span class="stage-progress-percent" id="stageProgressPercent">0% Completed</span>
           </div>
           <div class="stage-preview-toolbar">
-            <span class="edit-autosave-pill edit-autosave-pill-compact hidden is-saved" id="stageNavSaveStatus" role="status" aria-live="polite">
+            <span class="edit-autosave-pill edit-autosave-pill-compact hidden is-saved" id="stageNavSaveStatus"
+              role="status" aria-live="polite">
               <span class="autosave-dot" aria-hidden="true"></span>
               <span id="stageNavSaveStatusText">Saved</span>
             </span>
@@ -217,364 +274,499 @@
       </div>
 
       <div class="form-workspace-grid" id="formWorkspaceGrid">
-      <div class="stages-container">
-        <!-- Stage 1: About You -->
-        <div class="form-stage" id="stage-1" role="tabpanel" aria-labelledby="tab-stage-1">
-          <fieldset>
-            <legend>1. About You</legend>
-            
-            <div class="form-group">
-              <label for="submitterName">Your Name</label>
-              <input type="text" id="submitterName" name="submitterName" placeholder="Full name">
-            </div>
-
-            <div class="form-group">
-              <label for="submitterEmail">Your Contact E-mail *</label>
-              <input type="email" id="submitterEmail" name="submitterEmail" required placeholder="name@example.com">
-            </div>
-
-            <div class="form-group">
-              <label>Your Role in the Project</label>
-              <div class="checkbox-group multi-col">
-                <label><input type="checkbox" name="submitterRoles" value="Project leader"> Project leader</label>
-                <label><input type="checkbox" name="submitterRoles" value="Project team"> Project team</label>
-                <label><input type="checkbox" name="submitterRoles" value="Commissioner"> Commissioner</label>
-                <label><input type="checkbox" name="submitterRoles" value="Participant"> Participant</label>
-                <label><input type="checkbox" name="submitterRoles" value="Observer"> Observer</label>
-                <label><input type="checkbox" name="submitterRoles" value="Other"> Other</label>
-                <label><input type="checkbox" name="submitterRoles" value="Not involved"> Not involved</label>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="additionalAcknowledgements">Additional Acknowledgements</label>
-              <input type="text" id="additionalAcknowledgements" name="additionalAcknowledgements" placeholder="Any co-authors, contributors or credits">
-            </div>
-          </fieldset>
-          <div class="stage-actions">
-            <span></span>
-            <button type="button" class="btn-primary btn-next-stage" data-target="stage-2">Next: Project Details &rarr;</button>
-          </div>
-        </div>
-
-        <!-- Stage 2: Project Details -->
-        <div class="form-stage hidden" id="stage-2" role="tabpanel" aria-labelledby="tab-stage-2">
-          <fieldset>
-            <legend>2. Project Details</legend>
-
-            <div class="form-group">
-              <label for="projectTitle">Project Title *</label>
-              <input type="text" id="projectTitle" name="projectTitle" required placeholder="Name of the public engagement initiative">
-            </div>
-
-            <div class="form-group">
-              <label for="projectUrl">Project URL *</label>
-              <input type="url" id="projectUrl" name="projectUrl" required placeholder="https://example.org/project">
-              <small>Please provide a URL where project reports and resources can be found.</small>
-            </div>
-
-            <div class="form-group">
-              <label for="projectDescription">Brief Description of the Project *</label>
-              <textarea id="projectDescription" name="projectDescription" rows="4" required placeholder="Summary of the engagement process and objectives..."></textarea>
-            </div>
-
-            <div class="form-group">
-              <label for="subjectMatter">Describe the subject matter in your own words (one line)</label>
-              <input type="text" id="subjectMatter" name="subjectMatter" placeholder="e.g. Public perceptions of facial recognition in schools">
-            </div>
-
-            <div class="form-group full-case-only hidden">
-              <label>What form of AI is the project about?</label>
-              <div class="checkbox-group multi-col">
-                <label><input type="checkbox" name="aiForms" value="Generative AI"> Generative AI</label>
-                <label><input type="checkbox" name="aiForms" value="Predictive AI"> Predictive AI</label>
-                <label><input type="checkbox" name="aiForms" value="Specific AI system(s)"> Specific AI system(s)</label>
-                <label><input type="checkbox" name="aiForms" value="AI in general"> AI in general</label>
-                <label><input type="checkbox" name="aiForms" value="Current issues"> Current issues</label>
-                <label><input type="checkbox" name="aiForms" value="Future issues"> Future issues</label>
-              </div>
-            </div>
-
-            <div class="form-group full-case-only hidden">
-              <label>Project Goals</label>
-              <div class="checkbox-group multi-col multi-col-goals">
-                <label><input type="checkbox" name="projectGoals" value="Policy: Inform a policy-making process"> Policy: Inform a policy-making process</label>
-                <label><input type="checkbox" name="projectGoals" value="Quantitative: Generate statistical evidence on public attitudes to AI"> Quantitative: Generate statistical evidence on public attitudes to AI</label>
-                <label><input type="checkbox" name="projectGoals" value="Qualitative: Capture qualitative evidence on public attitudes to AI"> Qualitative: Capture qualitative evidence on public attitudes to AI</label>
-                <label><input type="checkbox" name="projectGoals" value="Empowerment: Build community power with respect to AI"> Empowerment: Build community power with respect to AI</label>
-                <label><input type="checkbox" name="projectGoals" value="Methods: Create re-usable participation tools & methods"> Methods: Create re-usable participation tools &amp; methods</label>
-                <label><input type="checkbox" name="projectGoals" value="Capacity: Build participant capacity to engage with AI"> Capacity: Build participant capacity to engage with AI</label>
-                <label><input type="checkbox" name="projectGoals" value="AI Development: Shape the development of AI tools"> AI Development: Shape the development of AI tools</label>
-                <label><input type="checkbox" name="projectGoals" value="Audit: Review design or implementation of AI tools"> Audit: Review design or implementation of AI tools</label>
-                <label><input type="checkbox" name="projectGoals" value="Evaluate: Check the quality of evidence or engagement processes"> Evaluate: Check the quality of evidence or engagement processes</label>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label for="importanceReason">Why is this project important to include in the case book?</label>
-              <textarea id="importanceReason" name="importanceReason" rows="3" placeholder="Key significance, unique approach, or novel insights..."></textarea>
-            </div>
-
-            <div class="form-group full-case-only hidden">
-              <label>How was the project initiated?</label>
-              <div class="checkbox-group multi-col">
-                <label><input type="checkbox" name="initiatedMethods" value="Commissioned"> Commissioned</label>
-                <label><input type="checkbox" name="initiatedMethods" value="Academic research"> Academic research</label>
-                <label><input type="checkbox" name="initiatedMethods" value="Community Led"> Community Led</label>
-                <label><input type="checkbox" name="initiatedMethods" value="Co-created"> Co-created</label>
-                <label><input type="checkbox" name="initiatedMethods" value="Other"> Other</label>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group col">
-                <label for="startYear">Start Year</label>
-                <input type="number" id="startYear" name="startYear" min="1990" max="2035" placeholder="e.g. 2024">
-              </div>
-              <div class="form-group col">
-                <label for="projectStatus">Project Status</label>
-                <select id="projectStatus" name="projectStatus">
-                  <option value="">-- Select Status --</option>
-                  <option value="Planned">Planned</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Complete">Complete</option>
-                </select>
-              </div>
-              <div class="form-group col">
-                <label for="endYear">Conclusion Year</label>
-                <input type="number" id="endYear" name="endYear" min="1990" max="2035" placeholder="e.g. 2025">
-              </div>
-            </div>
-          </fieldset>
-          <div class="stage-actions">
-            <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-1">&larr; Back: About You</button>
-            <button type="button" class="btn-primary btn-next-stage" id="stage2NextBtn" data-target="stage-3">Next: Organisations &rarr;</button>
-          </div>
-        </div>
-
-        <!-- Full Case Only Stages -->
-        <div id="fullCaseStages">
-          <!-- Stage 3: Project Team & Organisations -->
-          <div class="form-stage hidden" id="stage-3" role="tabpanel" aria-labelledby="tab-stage-3">
+        <div class="stages-container">
+          <!-- Stage 1: About You -->
+          <div class="form-stage" id="stage-1" role="tabpanel" aria-labelledby="tab-stage-1">
             <fieldset>
-              <legend>3. Who Was Asking? (Project Team &amp; Organisations)</legend>
-              <p class="section-desc">Search existing organisations in our database, or add a new organisation if it is not found.</p>
+              <legend>1. About You</legend>
 
               <div class="form-group">
-                <label>Lead Organisations</label>
-                <div id="leadOrgsPicker" class="org-picker" data-category="lead"></div>
+                <label for="submitterName">Your Name</label>
+                <input type="text" id="submitterName" name="submitterName" placeholder="Full name">
               </div>
 
               <div class="form-group">
-                <label>Funding Organisations</label>
-                <div id="fundingOrgsPicker" class="org-picker" data-category="funding"></div>
+                <label for="submitterEmail">Your Contact E-mail *</label>
+                <input type="email" id="submitterEmail" name="submitterEmail" required placeholder="name@example.com">
               </div>
 
               <div class="form-group">
-                <label>Other Organisations Involved</label>
-                <div id="involvedOrgsPicker" class="org-picker" data-category="involved"></div>
+                <label>Your Role in the Project</label>
+                <div class="checkbox-group multi-col">
+                  <label><input type="checkbox" name="submitterRoles" value="Project leader"> Project leader</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Project team"> Project team</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Commissioner"> Commissioner</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Participant"> Participant</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Observer"> Observer</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Other"> Other</label>
+                  <label><input type="checkbox" name="submitterRoles" value="Not involved"> Not involved</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="additionalAcknowledgements">Additional Acknowledgements</label>
+                <input type="text" id="additionalAcknowledgements" name="additionalAcknowledgements"
+                  placeholder="Any co-authors, contributors or credits">
               </div>
             </fieldset>
             <div class="stage-actions">
-              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-2">&larr; Back: Project Details</button>
-              <button type="button" class="btn-primary btn-next-stage" data-target="stage-4">Next: Participants &rarr;</button>
+              <span></span>
+              <button type="button" class="btn-primary btn-next-stage" data-target="stage-2">Next: Project Details
+                &rarr;</button>
             </div>
           </div>
 
-          <!-- Stage 4: Participants (Repeater) -->
-          <div class="form-stage hidden" id="stage-4" role="tabpanel" aria-labelledby="tab-stage-4">
+          <!-- Stage 2: Project Details -->
+          <div class="form-stage hidden" id="stage-2" role="tabpanel" aria-labelledby="tab-stage-2">
             <fieldset>
-              <legend>4. Who Was Asked and How? (Participants)</legend>
-              <p class="section-desc">
-                Add details for each distinct participant group involved in this project (e.g. combining an online survey with a deliberative workshop).
-              </p>
+              <legend>2. Project Details</legend>
 
-              <div id="participantsList" class="repeater-list"></div>
-              <button type="button" id="addParticipantBtn" class="btn-secondary">+ Add Participant Group</button>
-
-              <div class="form-group" style="margin-top: 1.5rem;">
-                <label for="inclusionEfforts">Specific Efforts at Inclusion</label>
-                <textarea id="inclusionEfforts" name="inclusionEfforts" rows="3" placeholder="Efforts made to make the recruitment and engagement process accessible and inclusive..."></textarea>
+              <div class="form-group">
+                <label for="projectTitle">Project Title *</label>
+                <input type="text" id="projectTitle" name="projectTitle" required
+                  placeholder="Name of the public engagement initiative">
               </div>
 
               <div class="form-group">
-                <label for="limitations">Limitations to Note</label>
-                <textarea id="limitations" name="limitations" rows="3" placeholder="Practical constraints, disrupted data collection, or underrepresented groups..."></textarea>
-              </div>
-            </fieldset>
-            <div class="stage-actions">
-              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-3">&larr; Back: Organisations</button>
-              <button type="button" class="btn-primary btn-next-stage" data-target="stage-5">Next: Outputs &rarr;</button>
-            </div>
-          </div>
-
-          <!-- Stage 5: Outputs -->
-          <div class="form-stage hidden" id="stage-5" role="tabpanel" aria-labelledby="tab-stage-5">
-            <fieldset>
-              <legend>5. Outputs</legend>
-
-              <div class="form-group">
-                <label for="headlineFindings">Headline Findings</label>
-                <textarea id="headlineFindings" name="headlineFindings" rows="3" placeholder="Summary of findings or key outputs from the project report..."></textarea>
-              </div>
-
-              <!-- Messages: Issues, Actions, Recommendations & Quotes -->
-              <div class="form-group messages-section">
-                <div class="messages-header">
-                  <div>
-                    <label class="messages-section-title">Messages: Issues, Recommendations &amp; Quotes</label>
-                    <p class="section-desc">Create structured outputs from this project. Use the buttons below to bulk-paste newline-separated entries, then edit their short titles and text inline.</p>
-                  </div>
-                  <div class="messages-btn-toolbar">
-                    <button type="button" id="addIssuesBtn" class="btn-msg-action btn-add-issue" data-type="Issue">
-                      <span class="btn-msg-icon">+</span> Add issues
-                    </button>
-                    <button type="button" id="addActionsBtn" class="btn-msg-action btn-add-action" data-type="Action">
-                      <span class="btn-msg-icon">+</span> Add actions
-                    </button>
-                    <button type="button" id="addRecommendationsBtn" class="btn-msg-action btn-add-recommendation" data-type="Recommendation">
-                      <span class="btn-msg-icon">+</span> Add recommendations
-                    </button>
-                    <button type="button" id="addQuotesBtn" class="btn-msg-action btn-add-quote" data-type="Quote">
-                      <span class="btn-msg-icon">+</span> Add quotes
-                    </button>
-                  </div>
-                </div>
-
-                <div id="messagesTableContainer" class="messages-table-container">
-                  <!-- Rendered dynamically by app.js: table or empty state -->
-                </div>
-              </div>
-
-              <div class="form-group" style="margin-top: 1.5rem;">
-                <label>Was AI used to assist in summary generation?</label>
-                <div class="checkbox-group">
-                  <label><input type="checkbox" name="aiAssistance" value="The summary was written by hand"> The summary was written by hand</label>
-                  <label><input type="checkbox" name="aiAssistance" value="AI was used in generating this summary"> AI was used in generating this summary</label>
-                  <label><input type="checkbox" name="aiAssistance" value="The summary has been edited and checked for accuracy"> The summary has been edited and checked for accuracy</label>
-                </div>
-              </div>
-            </fieldset>
-            <div class="stage-actions">
-              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-4">&larr; Back: Participants</button>
-              <button type="button" class="btn-primary btn-next-stage" data-target="stage-6">Next: Supporting Resources &rarr;</button>
-            </div>
-          </div>
-
-          <!-- Stage 6: Supporting Resources -->
-          <div class="form-stage hidden" id="stage-6" role="tabpanel" aria-labelledby="tab-stage-6">
-            <fieldset>
-              <legend>6. Supporting Resources</legend>
-
-              <div class="form-group">
-                <label>Which of the following resources have been published?</label>
-                <div class="checkbox-group">
-                  <label><input type="checkbox" name="publishedResources" value="A project report"> A project report</label>
-                  <label><input type="checkbox" name="publishedResources" value="A project video"> A project video</label>
-                  <label><input type="checkbox" name="publishedResources" value="An independent evaluation"> An independent evaluation</label>
-                  <label><input type="checkbox" name="publishedResources" value="A research poster"> A research poster</label>
-                  <label><input type="checkbox" name="publishedResources" value="A method guide or toolkit"> A method guide or toolkit</label>
-                </div>
+                <label for="projectUrl">Project URL *</label>
+                <input type="url" id="projectUrl" name="projectUrl" required placeholder="https://example.org/project">
+                <small>Please provide a URL where project reports and resources can be found.</small>
               </div>
 
               <div class="form-group">
-                <label>Supporting Resources (Links &amp; Uploaded Files)</label>
-                <small class="field-hint">Add links to online reports, media coverage, or videos, or upload resource documents (PDF, Word, slides, spreadsheets, images) directly.</small>
-                <div id="resourcesList" class="repeater-list"></div>
-                <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource (Link or File)</button>
+                <label for="subjectMatter">Describe the subject matter in your own words (one line)</label>
+                <input type="text" id="subjectMatter" name="subjectMatter"
+                  placeholder="e.g. Public perceptions of facial recognition in schools">
               </div>
 
               <div class="form-group">
-                <label>Photos Available?</label>
-                <div class="checkbox-group">
-                  <label><input type="checkbox" name="photosAvailable" value="I have photos from this project to upload" id="photosAvailableUploadCheck"> I have photos from this project to upload</label>
-                  <label><input type="checkbox" name="photosAvailable" value="Photos may be available from this project - contact me later"> Photos may be available from this project - contact me later</label>
-                  <label><input type="checkbox" name="photosAvailable" value="There are no photos available from this project"> There are no photos available from this project</label>
-                </div>
+                <label for="projectDescription">Brief Description of the Project *</label>
+                <textarea id="projectDescription" name="projectDescription" rows="6" class="rich-textarea" required
+                  placeholder="Summary of the engagement process and objectives..."></textarea>
               </div>
 
-              <div class="form-group photo-upload-section" id="photoUploadSection">
-                <label for="photoFileInput">Project Photos &amp; Images</label>
+              <!-- Staff Only: Method Image & Caption Section -->
+              <div class="form-group staff-method-image-section hidden" id="staffMethodImageSection">
+                <div class="staff-section-header">
+                  <label for="methodImageFileInput">Method Image &amp; Caption</label>
+                  <span class="badge badge-staff-sm">Staff Only</span>
+                </div>
                 <p class="field-hint">
-                  Upload photos from the engagement events, workshops, or activities (JPEG, PNG, WebP, GIF, AVIF &mdash; up to 20 MB per file).
-                  By uploading photos, you confirm that appropriate consent is in place for them to be published online in association with this case study.
+                  Add a single image representing the engagement methodology (e.g. process diagram, workflow, or framework) and an attribution caption.
                 </p>
-                <div class="file-upload-dropzone" id="photoUploadDropzone">
-                  <input
-                    type="file"
-                    id="photoFileInput"
-                    accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
-                    multiple
-                    class="file-input-hidden"
-                  >
+                <div class="file-upload-dropzone file-upload-dropzone-sm" id="methodImageDropzone">
+                  <input type="file" id="methodImageFileInput" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" class="file-input-hidden">
                   <div class="dropzone-content">
-                    <span class="dropzone-icon" aria-hidden="true">📷</span>
+                    <span class="dropzone-icon" aria-hidden="true">🖼️</span>
                     <div class="dropzone-text">
-                      <strong>Click to choose photos</strong> or drag and drop image files here
-                      <span>JPEG, PNG, WebP, GIF, AVIF (max 20 MB each)</span>
+                      <strong>Click to choose method image</strong> or drag and drop here
+                      <span>JPEG, PNG, WebP, GIF, AVIF (max 20 MB)</span>
                     </div>
-                    <button type="button" class="btn-secondary btn-sm" id="triggerPhotoInputBtn">Select Photos</button>
+                    <button type="button" class="btn-secondary btn-sm" id="triggerMethodImageBtn">Select Method Image</button>
                   </div>
                 </div>
-                <div id="photoUploadStatus" class="upload-status-bar hidden" role="status" aria-live="polite"></div>
-                <div id="photosGalleryList" class="photos-gallery-grid"></div>
+                <div id="methodImageUploadStatus" class="upload-status-bar hidden" role="status" aria-live="polite"></div>
+                <div id="methodImagePreview" class="method-image-preview-card hidden"></div>
+
+                <div class="form-group" style="margin-top: 0.85rem; margin-bottom: 0;">
+                  <label for="methodImageCaptionInput">Method Image Caption / Source</label>
+                  <input type="text" id="methodImageCaptionInput" name="methodImageCaption" placeholder="Include a short caption indicating the source or description of the method image...">
+                </div>
+              </div>
+
+              <div class="form-group full-case-only hidden">
+                <label>What form of AI is the project about?</label>
+                <div class="checkbox-group multi-col">
+                  <label><input type="checkbox" name="aiForms" value="Generative AI"> Generative AI</label>
+                  <label><input type="checkbox" name="aiForms" value="Predictive AI"> Predictive AI</label>
+                  <label><input type="checkbox" name="aiForms" value="Specific AI system(s)"> Specific AI
+                    system(s)</label>
+                  <label><input type="checkbox" name="aiForms" value="AI in general"> AI in general</label>
+                  <label><input type="checkbox" name="aiForms" value="Current issues"> Current issues</label>
+                  <label><input type="checkbox" name="aiForms" value="Future issues"> Future issues</label>
+                </div>
+              </div>
+
+              <div class="form-group full-case-only hidden">
+                <label>Project Goals</label>
+                <div class="checkbox-group multi-col multi-col-goals">
+                  <label><input type="checkbox" name="projectGoals" value="Policy: Inform a policy-making process">
+                    Policy: Inform a policy-making process</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Quantitative: Generate statistical evidence on public attitudes to AI"> Quantitative:
+                    Generate statistical evidence on public attitudes to AI</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Qualitative: Capture qualitative evidence on public attitudes to AI"> Qualitative: Capture
+                    qualitative evidence on public attitudes to AI</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Empowerment: Build community power with respect to AI"> Empowerment: Build community power
+                    with respect to AI</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Methods: Create re-usable participation tools & methods"> Methods: Create re-usable
+                    participation tools &amp; methods</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Capacity: Build participant capacity to engage with AI"> Capacity: Build participant
+                    capacity to engage with AI</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="AI Development: Shape the development of AI tools"> AI Development: Shape the development
+                    of AI tools</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Audit: Review design or implementation of AI tools"> Audit: Review design or implementation
+                    of AI tools</label>
+                  <label><input type="checkbox" name="projectGoals"
+                      value="Evaluate: Check the quality of evidence or engagement processes"> Evaluate: Check the
+                    quality of evidence or engagement processes</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="importanceReason">Why is this project important to include in the case book?</label>
+                <textarea id="importanceReason" name="importanceReason" rows="6" class="rich-textarea"
+                  placeholder="Key significance, unique approach, or novel insights..."></textarea>
+              </div>
+
+              <div class="form-group full-case-only hidden">
+                <label>How was the project initiated?</label>
+                <div class="checkbox-group multi-col">
+                  <label><input type="checkbox" name="initiatedMethods" value="Commissioned"> Commissioned</label>
+                  <label><input type="checkbox" name="initiatedMethods" value="Academic research"> Academic
+                    research</label>
+                  <label><input type="checkbox" name="initiatedMethods" value="Community Led"> Community Led</label>
+                  <label><input type="checkbox" name="initiatedMethods" value="Co-created"> Co-created</label>
+                  <label><input type="checkbox" name="initiatedMethods" value="Other"> Other</label>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group col">
+                  <label for="startYear">Start Year</label>
+                  <input type="number" id="startYear" name="startYear" min="1990" max="2035" placeholder="e.g. 2024">
+                </div>
+                <div class="form-group col">
+                  <label for="projectStatus">Project Status</label>
+                  <select id="projectStatus" name="projectStatus">
+                    <option value="">-- Select Status --</option>
+                    <option value="Planned">Planned</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Complete">Complete</option>
+                  </select>
+                </div>
+                <div class="form-group col">
+                  <label for="endYear">Conclusion Year</label>
+                  <input type="number" id="endYear" name="endYear" min="1990" max="2035" placeholder="e.g. 2025">
+                </div>
               </div>
             </fieldset>
             <div class="stage-actions">
-              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back: Outputs</button>
-              <button type="button" id="stage6NextBtn" class="btn-primary btn-next-stage" data-target="stage-7">Next: Review &amp; Submit &rarr;</button>
+              <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-1">&larr; Back: About
+                You</button>
+              <button type="button" class="btn-primary btn-next-stage" id="stage2NextBtn" data-target="stage-3">Next:
+                Organisations &rarr;</button>
+            </div>
+          </div>
+
+          <!-- Full Case Only Stages -->
+          <div id="fullCaseStages">
+            <!-- Stage 3: Project Team & Organisations -->
+            <div class="form-stage hidden" id="stage-3" role="tabpanel" aria-labelledby="tab-stage-3">
+              <fieldset>
+                <legend>3. Who Was Asking? (Project Team &amp; Organisations)</legend>
+                <p class="section-desc">Search existing organisations in our database, or add a new organisation if it
+                  is not found.</p>
+
+                <div class="form-group">
+                  <label>Lead Organisations</label>
+                  <div id="leadOrgsPicker" class="org-picker" data-category="lead"></div>
+                </div>
+
+                <div class="form-group">
+                  <label>Funding Organisations</label>
+                  <div id="fundingOrgsPicker" class="org-picker" data-category="funding"></div>
+                </div>
+
+                <div class="form-group">
+                  <label>Other Organisations Involved</label>
+                  <div id="involvedOrgsPicker" class="org-picker" data-category="involved"></div>
+                </div>
+
+                <!-- Staff Only: Collapsible Organisations Editor -->
+                <div class="staff-collapsible-wrapper">
+                  <details class="staff-collapsible-section hidden" id="staffOrgsEditorSection">
+                    <summary class="staff-collapsible-summary">
+                      <span class="summary-left">
+                        <span class="summary-icon" aria-hidden="true">🏢</span>
+                        <strong>Edit Linked Organisations</strong>
+                        <span class="badge badge-staff-sm">Staff Only</span>
+                      </span>
+                      <span class="summary-count" id="staffOrgsCount">0 linked</span>
+                    </summary>
+                    <div class="staff-collapsible-body">
+                      <p class="staff-editor-help">
+                        As a signed-in editor, you can update details for linked organisations in the database (title, website, organisation types, and main location). Changes update the central organisation record.
+                      </p>
+                      <div id="staffOrgsTableContainer" class="staff-entity-table-container">
+                        <!-- Rendered by app.js -->
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </fieldset>
+              <div class="stage-actions">
+                <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-2">&larr; Back: Project
+                  Details</button>
+                <button type="button" class="btn-primary btn-next-stage" data-target="stage-4">Next: Participants
+                  &rarr;</button>
+              </div>
+            </div>
+
+            <!-- Stage 4: Participants (Repeater) -->
+            <div class="form-stage hidden" id="stage-4" role="tabpanel" aria-labelledby="tab-stage-4">
+              <fieldset>
+                <legend>4. Who Was Asked and How? (Participants)</legend>
+                <p class="section-desc">
+                  Add details for each distinct participant group involved in this project (e.g. combining an online
+                  survey with a deliberative workshop).
+                </p>
+
+                <div id="participantsList" class="repeater-list"></div>
+                <button type="button" id="addParticipantBtn" class="btn-secondary">+ Add Participant Group</button>
+
+                <div class="form-group" style="margin-top: 1.5rem;">
+                  <label for="inclusionEfforts">Specific Efforts at Inclusion</label>
+                  <textarea id="inclusionEfforts" name="inclusionEfforts" rows="6" class="rich-textarea"
+                    placeholder="Efforts made to make the recruitment and engagement process accessible and inclusive..."></textarea>
+                </div>
+
+                <div class="form-group">
+                  <label for="limitations">Limitations to Note</label>
+                  <textarea id="limitations" name="limitations" rows="6" class="rich-textarea"
+                    placeholder="Practical constraints, disrupted data collection, or underrepresented groups..."></textarea>
+                </div>
+
+                <!-- Staff Only: Collapsible Locations Editor -->
+                <div class="staff-collapsible-wrapper" style="margin-top: 1.5rem;">
+                  <details class="staff-collapsible-section hidden" id="staffLocationsEditorSection">
+                    <summary class="staff-collapsible-summary">
+                      <span class="summary-left">
+                        <span class="summary-icon" aria-hidden="true">📍</span>
+                        <strong>Edit Related Locations</strong>
+                        <span class="badge badge-staff-sm">Staff Only</span>
+                      </span>
+                      <span class="summary-count" id="staffLocationsCount">0 locations</span>
+                    </summary>
+                    <div class="staff-collapsible-body">
+                      <p class="staff-editor-help">
+                        Edit details for all locations related to this case, including participant locations and organisation headquarters. Includes country code and coordinates with direct Google Maps verification links.
+                      </p>
+                      <div id="staffLocationsListContainer" class="staff-entity-table-container">
+                        <!-- Rendered by app.js -->
+                      </div>
+                    </div>
+                  </details>
+                </div>
+              </fieldset>
+              <div class="stage-actions">
+                <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-3">&larr; Back:
+                  Organisations</button>
+                <button type="button" class="btn-primary btn-next-stage" data-target="stage-5">Next: Outputs
+                  &rarr;</button>
+              </div>
+            </div>
+
+            <!-- Stage 5: Outputs -->
+            <div class="form-stage hidden" id="stage-5" role="tabpanel" aria-labelledby="tab-stage-5">
+              <fieldset>
+                <legend>5. Outputs</legend>
+
+                <div class="form-group">
+                  <label for="headlineFindings">Headline Findings</label>
+                  <textarea id="headlineFindings" name="headlineFindings" rows="6" class="rich-textarea"
+                    placeholder="Summary of findings or key outputs from the project report..."></textarea>
+                </div>
+
+                <!-- Messages: Issues, Actions, Recommendations & Quotes -->
+                <div class="form-group messages-section">
+                  <div class="messages-header">
+                    <div>
+                      <label class="messages-section-title">Messages: Issues, Recommendations &amp; Quotes</label>
+                      <p class="section-desc">Create structured outputs from this project. Use the buttons below to
+                        bulk-paste newline-separated entries, then edit their short titles and text inline.</p>
+                    </div>
+                    <div class="messages-btn-toolbar">
+                      <button type="button" id="addIssuesBtn" class="btn-msg-action btn-add-issue" data-type="Issue">
+                        <span class="btn-msg-icon">+</span> Add issues
+                      </button>
+                      <button type="button" id="addActionsBtn" class="btn-msg-action btn-add-action" data-type="Action">
+                        <span class="btn-msg-icon">+</span> Add actions
+                      </button>
+                      <button type="button" id="addRecommendationsBtn" class="btn-msg-action btn-add-recommendation"
+                        data-type="Recommendation">
+                        <span class="btn-msg-icon">+</span> Add recommendations
+                      </button>
+                      <button type="button" id="addQuotesBtn" class="btn-msg-action btn-add-quote" data-type="Quote">
+                        <span class="btn-msg-icon">+</span> Add quotes
+                      </button>
+                    </div>
+                  </div>
+
+                  <div id="messagesTableContainer" class="messages-table-container">
+                    <!-- Rendered dynamically by app.js: table or empty state -->
+                  </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 1.5rem;">
+                  <label>Was AI used to assist in summary generation?</label>
+                  <div class="checkbox-group">
+                    <label><input type="checkbox" name="aiAssistance" value="The summary was written by hand"> The
+                      summary was written by hand</label>
+                    <label><input type="checkbox" name="aiAssistance" value="AI was used in generating this summary"> AI
+                      was used in generating this summary</label>
+                    <label><input type="checkbox" name="aiAssistance"
+                        value="The summary has been edited and checked for accuracy"> The summary has been edited and
+                      checked for accuracy</label>
+                  </div>
+                </div>
+              </fieldset>
+              <div class="stage-actions">
+                <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-4">&larr; Back:
+                  Participants</button>
+                <button type="button" class="btn-primary btn-next-stage" data-target="stage-6">Next: Supporting
+                  Resources &rarr;</button>
+              </div>
+            </div>
+
+            <!-- Stage 6: Supporting Resources -->
+            <div class="form-stage hidden" id="stage-6" role="tabpanel" aria-labelledby="tab-stage-6">
+              <fieldset>
+                <legend>6. Supporting Resources</legend>
+
+                <div class="form-group">
+                  <label>Which of the following resources have been published?</label>
+                  <div class="checkbox-group">
+                    <label><input type="checkbox" name="publishedResources" value="A project report"> A project
+                      report</label>
+                    <label><input type="checkbox" name="publishedResources" value="A project video"> A project
+                      video</label>
+                    <label><input type="checkbox" name="publishedResources" value="An independent evaluation"> An
+                      independent evaluation</label>
+                    <label><input type="checkbox" name="publishedResources" value="A research poster"> A research
+                      poster</label>
+                    <label><input type="checkbox" name="publishedResources" value="A method guide or toolkit"> A method
+                      guide or toolkit</label>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label>Supporting Resources (Links &amp; Uploaded Files)</label>
+                  <small class="field-hint">Add links to online reports, media coverage, or videos, or upload resource
+                    documents (PDF, Word, slides, spreadsheets, images) directly.</small>
+                  <div id="resourcesList" class="repeater-list"></div>
+                  <button type="button" id="addResourceBtn" class="btn-secondary">+ Add Resource (Link or File)</button>
+                </div>
+
+                <div class="form-group">
+                  <label>Photos Available?</label>
+                  <div class="checkbox-group">
+                    <label><input type="checkbox" name="photosAvailable"
+                        value="I have photos from this project to upload" id="photosAvailableUploadCheck"> I have photos
+                      from this project to upload</label>
+                    <label><input type="checkbox" name="photosAvailable"
+                        value="Photos may be available from this project - contact me later"> Photos may be available
+                      from this project - contact me later</label>
+                    <label><input type="checkbox" name="photosAvailable"
+                        value="There are no photos available from this project"> There are no photos available from this
+                      project</label>
+                  </div>
+                </div>
+
+                <div class="form-group photo-upload-section" id="photoUploadSection">
+                  <label for="photoFileInput">Project Photos &amp; Images</label>
+                  <p class="field-hint">
+                    Upload photos from the engagement events, workshops, or activities (JPEG, PNG, WebP, GIF, AVIF
+                    &mdash; up to 20 MB per file).
+                    By uploading photos, you confirm that appropriate consent is in place for them to be published
+                    online in association with this case study.
+                  </p>
+                  <div class="file-upload-dropzone" id="photoUploadDropzone">
+                    <input type="file" id="photoFileInput" accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                      multiple class="file-input-hidden">
+                    <div class="dropzone-content">
+                      <span class="dropzone-icon" aria-hidden="true">📷</span>
+                      <div class="dropzone-text">
+                        <strong>Click to choose photos</strong> or drag and drop image files here
+                        <span>JPEG, PNG, WebP, GIF, AVIF (max 20 MB each)</span>
+                      </div>
+                      <button type="button" class="btn-secondary btn-sm" id="triggerPhotoInputBtn">Select
+                        Photos</button>
+                    </div>
+                  </div>
+                  <div id="photoUploadStatus" class="upload-status-bar hidden" role="status" aria-live="polite"></div>
+                  <div id="photosGalleryList" class="photos-gallery-grid"></div>
+                </div>
+              </fieldset>
+              <div class="stage-actions">
+                <button type="button" class="btn-secondary btn-prev-stage" data-target="stage-5">&larr; Back:
+                  Outputs</button>
+                <button type="button" id="stage6NextBtn" class="btn-primary btn-next-stage" data-target="stage-7">Next:
+                  Review &amp; Submit &rarr;</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stage 7: Review & Submit / Preview & Save -->
+          <div class="form-stage hidden" id="stage-7" role="tabpanel" aria-labelledby="tab-stage-7">
+            <div id="livePreviewMountStage7" class="stage7-preview-mount">
+              <div id="paveLivePreviewRoot" class="pave-live-preview">
+                <div class="pave-preview-chrome">
+                  <div class="pave-preview-chrome-title">
+                    <span class="pave-preview-badge">Live Case Book Preview</span>
+                    <span class="pave-preview-hint">Updates automatically as you type</span>
+                  </div>
+                  <div class="pave-preview-mode-switcher" role="tablist" aria-label="Preview format">
+                    <button type="button" class="pave-mode-btn is-active" data-preview-mode="page" role="tab"
+                      aria-selected="true">
+                      Case Study Page
+                    </button>
+                    <button type="button" class="pave-mode-btn" data-preview-mode="card" role="tab"
+                      aria-selected="false">
+                      Browse Card
+                    </button>
+                  </div>
+                </div>
+                <div id="pavePreviewViewport" class="pave-preview-viewport">
+                  <!-- Rendered dynamically by preview.js -->
+                </div>
+              </div>
+            </div>
+
+            <fieldset id="stage7ConsentFieldset">
+              <legend>Review &amp; Submit</legend>
+              <p class="consent-text">
+                By submitting this entry, I confirm that:
+              </p>
+              <ol class="consent-list">
+                <li>The information I've provided may be made public and archived as part of the PAVE case book,
+                  published under an open license;</li>
+                <li>I am not including sensitive personal information, such as unpublished transcripts or identifying
+                  respondent details;</li>
+                <li>If photos are attached, appropriate consent is in place for publication online.</li>
+              </ol>
+              <div class="form-group">
+                <label class="consent-checkbox-label">
+                  <input type="checkbox" id="consentCheck" required>
+                  I agree to the terms and <a href="https://connectedbydata.org/policies/data-protection"
+                    target="_blank" rel="noopener noreferrer">Connected by Data data protection policy</a>. *
+                </label>
+              </div>
+            </fieldset>
+
+            <div class="stage-actions">
+              <button type="button" class="btn-secondary btn-prev-stage" id="stage7PrevBtn" data-target="stage-6">&larr;
+                Back: Supporting Resources</button>
+              <button type="submit" id="submitBtn" class="btn-primary">Submit Case Entry</button>
             </div>
           </div>
         </div>
-
-        <!-- Stage 7: Review & Submit / Preview & Save -->
-        <div class="form-stage hidden" id="stage-7" role="tabpanel" aria-labelledby="tab-stage-7">
-          <div id="livePreviewMountStage7" class="stage7-preview-mount">
-            <div id="paveLivePreviewRoot" class="pave-live-preview">
-              <div class="pave-preview-chrome">
-                <div class="pave-preview-chrome-title">
-                  <span class="pave-preview-badge">Live Case Book Preview</span>
-                  <span class="pave-preview-hint">Updates automatically as you type</span>
-                </div>
-                <div class="pave-preview-mode-switcher" role="tablist" aria-label="Preview format">
-                  <button type="button" class="pave-mode-btn is-active" data-preview-mode="page" role="tab" aria-selected="true">
-                    Case Study Page
-                  </button>
-                  <button type="button" class="pave-mode-btn" data-preview-mode="card" role="tab" aria-selected="false">
-                    Browse Card
-                  </button>
-                </div>
-              </div>
-              <div id="pavePreviewViewport" class="pave-preview-viewport">
-                <!-- Rendered dynamically by preview.js -->
-              </div>
-            </div>
-          </div>
-
-          <fieldset id="stage7ConsentFieldset">
-            <legend>Review &amp; Submit</legend>
-            <p class="consent-text">
-              By submitting this entry, I confirm that:
-            </p>
-            <ol class="consent-list">
-              <li>The information I've provided may be made public and archived as part of the PAVE case book, published under an open license;</li>
-              <li>I am not including sensitive personal information, such as unpublished transcripts or identifying respondent details;</li>
-              <li>If photos are attached, appropriate consent is in place for publication online.</li>
-            </ol>
-            <div class="form-group">
-              <label class="consent-checkbox-label">
-                <input type="checkbox" id="consentCheck" required>
-                I agree to the terms and <a href="https://connectedbydata.org/policies/data-protection" target="_blank" rel="noopener noreferrer">Connected by Data data protection policy</a>. *
-              </label>
-            </div>
-          </fieldset>
-
-          <div class="stage-actions">
-            <button type="button" class="btn-secondary btn-prev-stage" id="stage7PrevBtn" data-target="stage-6">&larr; Back: Supporting Resources</button>
-            <button type="submit" id="submitBtn" class="btn-primary">Submit Case Entry</button>
-          </div>
-        </div>
-      </div>
       </div>
 
       <div id="statusMessage" class="status-msg hidden"></div>
@@ -587,7 +779,7 @@
     <dialog id="participantModal">
       <form id="participantDialogForm" method="dialog">
         <h3 id="participantModalTitle">Add Participant Group</h3>
-        
+
         <div class="form-group">
           <label for="p_groupDescription">Group Description *</label>
           <input type="text" id="p_groupDescription" required placeholder="e.g. Citizens Assembly Deliberation Group">
@@ -645,7 +837,8 @@
         <div class="form-group">
           <label>Linked Map Locations (for Case Book Map)</label>
           <div id="p_locationsPicker" class="org-picker location-picker"></div>
-          <small>Search and select cities, regions, or countries to plot this participant cohort on the interactive map, or add a new location.</small>
+          <small>Search and select cities, regions, or countries to plot this participant cohort on the interactive map,
+            or add a new location.</small>
         </div>
 
         <div class="form-group">
@@ -671,9 +864,12 @@
         <div class="form-group">
           <label>Learning &amp; Facilitation Details</label>
           <div class="checkbox-group three-col">
-            <label><input type="checkbox" name="p_learning" value="There was a learning phase for participants"> Learning phase for participants</label>
-            <label><input type="checkbox" name="p_learning" value="There were trained facilitators involved"> Trained facilitators involved</label>
-            <label><input type="checkbox" name="p_learning" value="Materials from the learning phase have been published"> Learning materials published</label>
+            <label><input type="checkbox" name="p_learning" value="There was a learning phase for participants">
+              Learning phase for participants</label>
+            <label><input type="checkbox" name="p_learning" value="There were trained facilitators involved"> Trained
+              facilitators involved</label>
+            <label><input type="checkbox" name="p_learning"
+                value="Materials from the learning phase have been published"> Learning materials published</label>
           </div>
         </div>
 
@@ -694,7 +890,8 @@
       <form id="resourceDialogForm" method="dialog">
         <h3 id="resourceModalTitle">Add Supporting Resource</h3>
         <p class="modal-instruction">
-          Provide an external link (URL), upload one or more files (such as a PDF report, slide deck, or document), or both.
+          Provide an external link (URL), upload one or more files (such as a PDF report, slide deck, or document), or
+          both.
         </p>
 
         <div class="form-group">
@@ -708,15 +905,12 @@
         </div>
 
         <div class="form-group">
-          <label for="r_fileInput">Upload File(s) <span class="label-optional">(optional if URL is provided)</span></label>
+          <label for="r_fileInput">Upload File(s) <span class="label-optional">(optional if URL is
+              provided)</span></label>
           <div class="file-upload-dropzone file-upload-dropzone-sm" id="r_fileDropzone">
-            <input
-              type="file"
-              id="r_fileInput"
+            <input type="file" id="r_fileInput"
               accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md,.rtf,.odt,.odp,.ods,image/jpeg,image/png,image/webp,image/gif,image/avif"
-              multiple
-              class="file-input-hidden"
-            >
+              multiple class="file-input-hidden">
             <div class="dropzone-content">
               <span class="dropzone-icon" aria-hidden="true">📎</span>
               <div class="dropzone-text">
@@ -771,7 +965,8 @@
       <form id="pasteMessagesForm" method="dialog">
         <h3 id="pasteModalTitle">Add Entries</h3>
         <p class="modal-instruction" id="pasteModalInstruction">
-          Paste your text below with <strong>each entry on a new line</strong>. Empty lines will be automatically skipped.
+          Paste your text below with <strong>each entry on a new line</strong>. Empty lines will be automatically
+          skipped.
         </p>
 
         <div class="form-group">
@@ -804,17 +999,21 @@
       <form id="staffLoginForm" method="dialog">
         <h3>NocoDB Staff Sign In</h3>
         <p class="modal-instruction">
-          Enter your personal NocoDB API Token (<code>xc-token</code>) to authenticate against the PAVE NocoDB user list.
-          Authenticated editors can edit <strong>Completed</strong> cases, view and post record comments, and inspect case revision history.
+          Enter your personal NocoDB API Token (<code>xc-token</code>) to authenticate against the PAVE NocoDB user
+          list.
+          Authenticated editors can edit <strong>Completed</strong> cases, view and post record comments, and inspect
+          case revision history.
         </p>
 
         <div class="form-group">
           <label for="staffTokenInput">Personal NocoDB API Token *</label>
           <input type="password" id="staffTokenInput" placeholder="Paste your NocoDB API token..." autocomplete="off">
-          <small>Generate a token in NocoDB under <strong>Account Settings &rarr; API Tokens</strong> (ensure Comments &amp; Records permissions are enabled if using a scoped token).</small>
+          <small>Generate a token in NocoDB under <strong>Account Settings &rarr; API Tokens</strong> (ensure Comments
+            &amp; Records permissions are enabled if using a scoped token).</small>
         </div>
 
-        <div id="staffLoginError" class="status-msg error hidden" style="margin-top: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.88rem;"></div>
+        <div id="staffLoginError" class="status-msg error hidden"
+          style="margin-top: 0.75rem; padding: 0.65rem 0.85rem; font-size: 0.88rem;"></div>
 
         <div class="dialog-actions">
           <button type="button" id="cancelStaffLoginBtn" class="btn-secondary">Cancel</button>
@@ -835,10 +1034,12 @@
       </div>
 
       <div class="drawer-tabs" role="tablist">
-        <button type="button" class="drawer-tab-btn is-active" id="drawerTabCommentsBtn" data-tab="comments" role="tab" aria-selected="true">
+        <button type="button" class="drawer-tab-btn is-active" id="drawerTabCommentsBtn" data-tab="comments" role="tab"
+          aria-selected="true">
           Comments <span id="drawerCommentsTabCount" class="drawer-tab-pill">0</span>
         </button>
-        <button type="button" class="drawer-tab-btn" id="drawerTabHistoryBtn" data-tab="history" role="tab" aria-selected="false">
+        <button type="button" class="drawer-tab-btn" id="drawerTabHistoryBtn" data-tab="history" role="tab"
+          aria-selected="false">
           Revision History <span id="drawerHistoryTabCount" class="drawer-tab-pill">0</span>
         </button>
       </div>
@@ -874,4 +1075,5 @@
   <script src="preview.js"></script>
   <script src="app.js"></script>
 </body>
+
 </html>
