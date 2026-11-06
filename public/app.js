@@ -108,6 +108,272 @@ function isStageComplete(stageId) {
   }
 }
 
+/* -------------------------------------------------------------
+ * 1b. Form Validation Engine & Field Highlighting
+ * ------------------------------------------------------------- */
+function getCaseValidationErrors(isEdit = state.isEditMode) {
+  const errors = [];
+
+  // Stage 1: Submitter Email
+  const emailInput = document.getElementById("submitterEmail");
+  const email = (emailInput?.value || "").trim();
+  const isEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  if (!isEdit) {
+    if (!email) {
+      errors.push({
+        stageId: "stage-1",
+        stageName: "Stage 1 (About You)",
+        fieldId: "submitterEmail",
+        label: "Contact Email",
+        message: "Contact email address is required so we can send your edit link and review updates.",
+      });
+    } else if (!isEmailValid) {
+      errors.push({
+        stageId: "stage-1",
+        stageName: "Stage 1 (About You)",
+        fieldId: "submitterEmail",
+        label: "Contact Email",
+        message: `"${escapeHtml(email)}" is not a valid email address. Please use the format name@example.com.`,
+      });
+    }
+  } else if (email && !isEmailValid) {
+    errors.push({
+      stageId: "stage-1",
+      stageName: "Stage 1 (About You)",
+      fieldId: "submitterEmail",
+      label: "Contact Email",
+      message: `"${escapeHtml(email)}" is not a valid email address.`,
+    });
+  }
+
+  // Stage 2: Project Title
+  const titleInput = document.getElementById("projectTitle");
+  const title = (titleInput?.value || "").trim();
+  if (!title) {
+    errors.push({
+      stageId: "stage-2",
+      stageName: "Stage 2 (Project Details)",
+      fieldId: "projectTitle",
+      label: "Project Title",
+      message: "Project title is required.",
+    });
+  }
+
+  // Stage 2: Project URL
+  const urlInput = document.getElementById("projectUrl");
+  const url = (urlInput?.value || "").trim();
+  if (!url) {
+    errors.push({
+      stageId: "stage-2",
+      stageName: "Stage 2 (Project Details)",
+      fieldId: "projectUrl",
+      label: "Project URL",
+      message: "Project URL is required so readers can find the official project reports and resources.",
+    });
+  } else if (!isValidClientUrl(url)) {
+    errors.push({
+      stageId: "stage-2",
+      stageName: "Stage 2 (Project Details)",
+      fieldId: "projectUrl",
+      label: "Project URL",
+      message: "Project URL must be a valid web address starting with http:// or https:// (e.g. https://example.org).",
+    });
+  }
+
+  // Stage 2: Brief Description of the Project
+  const descInput = document.getElementById("projectDescription");
+  const desc = (descInput?.value || "").trim();
+  if (!desc) {
+    errors.push({
+      stageId: "stage-2",
+      stageName: "Stage 2 (Project Details)",
+      fieldId: "projectDescription",
+      label: "Brief Description of the Project",
+      message: "Brief description of the project is required to summarize the initiative.",
+    });
+  } else if (desc.length < 5) {
+    errors.push({
+      stageId: "stage-2",
+      stageName: "Stage 2 (Project Details)",
+      fieldId: "projectDescription",
+      label: "Brief Description of the Project",
+      message: "Brief description of the project must be at least 5 characters long.",
+    });
+  }
+
+  // Stage 7: Consent Statement
+  if (!isEdit) {
+    const consentInput = document.getElementById("consentCheck");
+    if (!consentInput || !consentInput.checked) {
+      errors.push({
+        stageId: "stage-7",
+        stageName: "Stage 7 (Review & Submit)",
+        fieldId: "consentCheck",
+        label: "Consent & Data Protection Policy",
+        message: "You must agree to the terms and data protection policy before submitting.",
+      });
+    }
+  }
+
+  return errors;
+}
+
+function getStageValidationErrors(stageId, isEdit = state.isEditMode) {
+  const allErrors = getCaseValidationErrors(isEdit);
+  return allErrors.filter((e) => e.stageId === stageId);
+}
+
+function clearValidationSummary() {
+  const summaries = document.querySelectorAll(".validation-summary-card");
+  summaries.forEach((el) => {
+    el.innerHTML = "";
+    el.classList.add("hidden");
+  });
+}
+
+function showValidationSummary(errors, targetContainerId = null) {
+  if (!Array.isArray(errors) || errors.length === 0) {
+    clearValidationSummary();
+    return;
+  }
+
+  let container = null;
+  if (targetContainerId) {
+    container = document.getElementById(targetContainerId);
+  }
+  if (!container) {
+    if (state.currentStageId === "stage-7") {
+      container = document.getElementById("stage7ValidationSummary");
+    } else {
+      container = document.getElementById("formValidationSummary");
+    }
+  }
+  if (!container) return;
+
+  const countText = errors.length === 1 ? "1 required field" : `${errors.length} required fields`;
+
+  container.innerHTML = `
+    <div class="validation-summary-header">
+      <span class="validation-summary-icon" aria-hidden="true">⚠️</span>
+      <div>
+        <strong class="validation-summary-title">Cannot submit yet — please complete ${countText}:</strong>
+        <p class="validation-summary-subtitle">Click any field below to jump straight to it.</p>
+      </div>
+    </div>
+    <ul class="validation-summary-list" role="list">
+      ${errors
+        .map(
+          (err) => `
+        <li>
+          <button type="button" class="btn-validation-jump" data-stage="${escapeHtml(err.stageId)}" data-field="${escapeHtml(err.fieldId)}" title="Click to jump to ${escapeHtml(err.label)}">
+            <span class="jump-arrow" aria-hidden="true">&rarr;</span>
+            <span class="jump-stage">${escapeHtml(err.stageName)}:</span>
+            <span class="jump-field">${escapeHtml(err.label)}</span>
+            <span class="jump-desc">— ${escapeHtml(err.message)}</span>
+          </button>
+        </li>
+      `
+        )
+        .join("")}
+    </ul>
+  `;
+  container.classList.remove("hidden");
+
+  // Highlight all invalid fields with .input-error and inline messages
+  errors.forEach((err) => {
+    highlightFieldError(err.fieldId, err.message);
+  });
+
+  // Attach jump button click events
+  container.querySelectorAll(".btn-validation-jump").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const stage = btn.dataset.stage;
+      const fieldId = btn.dataset.field;
+      if (stage) goToStage(stage);
+      if (fieldId) {
+        setTimeout(() => {
+          focusAndHighlightField(fieldId);
+        }, 120);
+      }
+    });
+  });
+
+  // Smoothly scroll to the error summary
+  container.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function focusAndHighlightField(fieldId) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.focus();
+  el.classList.add("input-error");
+
+  if (el.classList.contains("rich-textarea")) {
+    el.closest(".rich-editor-wrapper")?.classList.add("input-error");
+  }
+}
+
+function highlightFieldError(fieldId, message) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+
+  el.classList.add("input-error");
+  const formGroup = el.closest(".form-group");
+  if (formGroup) {
+    if (el.classList.contains("rich-textarea")) {
+      formGroup.querySelector(".rich-editor-wrapper")?.classList.add("input-error");
+    }
+    if (el.id === "consentCheck") {
+      formGroup.querySelector(".consent-checkbox-label")?.classList.add("input-error");
+    }
+
+    let errText = formGroup.querySelector(`.field-error-text[data-for="${fieldId}"]`);
+    if (!errText) {
+      errText = document.createElement("span");
+      errText.className = "field-error-text";
+      errText.setAttribute("data-for", fieldId);
+      errText.setAttribute("role", "alert");
+      formGroup.appendChild(errText);
+    }
+    errText.textContent = message || "This field is required.";
+  }
+}
+
+function clearFieldError(fieldId) {
+  const el = document.getElementById(fieldId);
+  if (!el) return;
+
+  el.classList.remove("input-error");
+  const formGroup = el.closest(".form-group");
+  if (formGroup) {
+    formGroup.querySelector(".rich-editor-wrapper")?.classList.remove("input-error");
+    formGroup.querySelector(".consent-checkbox-label")?.classList.remove("input-error");
+    const errText = formGroup.querySelector(`.field-error-text[data-for="${fieldId}"]`);
+    if (errText) errText.remove();
+  }
+}
+
+function initValidationAutoClear() {
+  const form = document.getElementById("caseForm");
+  if (!form) return;
+
+  ["input", "change"].forEach((evtName) => {
+    form.addEventListener(evtName, (e) => {
+      const target = e.target;
+      if (target && target.id) {
+        clearFieldError(target.id);
+      }
+      const currentErrors = getCaseValidationErrors();
+      if (currentErrors.length === 0) {
+        clearValidationSummary();
+      }
+    });
+  });
+}
+
 function renderStageTabs() {
   const tabsList = document.getElementById("formTabsList");
   if (!tabsList) return;
@@ -269,6 +535,19 @@ async function goToStage(targetStageId, options = {}) {
 
   updateStageProgress();
 
+  // When navigating to Stage 7 (Review & Submit), check for any remaining required fields
+  if (targetStageId === "stage-7" && !state.isEditMode) {
+    const remainingErrors = getCaseValidationErrors(false);
+    if (remainingErrors.length > 0) {
+      showValidationSummary(remainingErrors, "stage7ValidationSummary");
+    } else {
+      clearValidationSummary();
+    }
+  } else if (targetStageId !== "stage-7") {
+    const s7Summary = document.getElementById("stage7ValidationSummary");
+    if (s7Summary) s7Summary.classList.add("hidden");
+  }
+
   // Scroll smoothly to stage tabs container
   const navContainer = document.querySelector(".stage-nav-container");
   if (navContainer) {
@@ -280,6 +559,14 @@ function initStageNavigation() {
   document.addEventListener("click", (e) => {
     const nextBtn = e.target.closest(".btn-next-stage");
     if (nextBtn) {
+      const currentStageId = state.currentStageId;
+      const stageErrors = getStageValidationErrors(currentStageId);
+      if (stageErrors.length > 0) {
+        showValidationSummary(stageErrors);
+        focusAndHighlightField(stageErrors[0].fieldId);
+        return;
+      }
+      clearValidationSummary();
       const target = nextBtn.dataset.target;
       if (target) goToStage(target);
       return;
@@ -287,11 +574,14 @@ function initStageNavigation() {
 
     const prevBtn = e.target.closest(".btn-prev-stage");
     if (prevBtn) {
+      clearValidationSummary();
       const target = prevBtn.dataset.target;
       if (target) goToStage(target);
       return;
     }
   });
+
+  initValidationAutoClear();
 
   // Listen to input and change events across the whole form to update tick marks immediately
   const form = document.getElementById("caseForm");
@@ -4178,16 +4468,19 @@ async function saveEditChanges(options = {}) {
 
   if (!payload.projectTitle) {
     updateEditSaveStatusUI("error", "Project Title (Stage 2) is required to save");
+    highlightFieldError("projectTitle", "Project Title is required.");
     return { error: "Project Title is required." };
   }
 
   if (payload.projectUrl && !isValidClientUrl(payload.projectUrl)) {
     updateEditSaveStatusUI("error", "Project URL (Stage 2) must start with http:// or https://");
+    highlightFieldError("projectUrl", "Project URL must be a valid http:// or https:// address.");
     return { error: "Invalid Project URL." };
   }
 
   if (payload.submitterEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.submitterEmail)) {
     updateEditSaveStatusUI("error", "Please enter a valid contact email in Stage 1");
+    highlightFieldError("submitterEmail", "Please enter a valid contact email.");
     return { error: "Invalid Contact Email." };
   }
 
@@ -4357,6 +4650,14 @@ function initFormSubmission() {
     e.preventDefault();
 
     if (state.isEditMode) {
+      const editErrors = getCaseValidationErrors(true);
+      if (editErrors.length > 0) {
+        showValidationSummary(editErrors);
+        focusAndHighlightField(editErrors[0].fieldId);
+        return;
+      }
+      clearValidationSummary();
+
       const res = await saveEditChanges({ force: true });
       if (statusEl && res.success) {
         statusEl.className = "status-msg success";
@@ -4370,6 +4671,7 @@ function initFormSubmission() {
           }</small></p>
         `;
         statusEl.classList.remove("hidden");
+        statusEl.scrollIntoView({ behavior: "smooth", block: "center" });
         setTimeout(() => {
           statusEl.classList.add("hidden");
         }, 4500);
@@ -4377,30 +4679,19 @@ function initFormSubmission() {
         statusEl.className = "status-msg error";
         statusEl.textContent = `Error: ${res.error}`;
         statusEl.classList.remove("hidden");
+        statusEl.scrollIntoView({ behavior: "smooth", block: "center" });
       }
       return;
     }
 
-    if (!isStageComplete("stage-1")) {
-      goToStage("stage-1");
-      alert("Please provide a valid contact email in Stage 1 before submitting.");
-      document.getElementById("submitterEmail")?.focus();
+    // New Submission: check all required fields across all stages
+    const allErrors = getCaseValidationErrors(false);
+    if (allErrors.length > 0) {
+      showValidationSummary(allErrors, "stage7ValidationSummary");
+      focusAndHighlightField(allErrors[0].fieldId);
       return;
     }
-
-    if (!isStageComplete("stage-2")) {
-      goToStage("stage-2");
-      alert("Please ensure Project Title, a valid Project URL (http/https), and Brief Description are filled in Stage 2.");
-      document.getElementById("projectTitle")?.focus();
-      return;
-    }
-
-    if (!document.getElementById("consentCheck").checked) {
-      goToStage("stage-7");
-      alert("Please agree to the consent statement before submitting.");
-      document.getElementById("consentCheck")?.focus();
-      return;
-    }
+    clearValidationSummary();
 
     submitBtn.disabled = true;
     submitBtn.textContent = "Saving your submission...";

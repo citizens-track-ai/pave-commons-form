@@ -224,9 +224,11 @@
       </div>
     </section>
 
-    <form id="caseForm" class="hidden">
+    <form id="caseForm" class="hidden" novalidate>
       <input type="hidden" id="caseId" name="caseId">
       <input type="hidden" id="editKey" name="editKey">
+
+      <div id="formValidationSummary" class="validation-summary-card hidden" role="alert" aria-live="assertive"></div>
 
       <div id="backToAboutRow" class="back-to-about-row">
         <button type="button" id="backToAboutBtn" class="btn-secondary btn-sm">&larr; Back to About &amp; Data
@@ -759,6 +761,8 @@
                 </label>
               </div>
             </fieldset>
+
+            <div id="stage7ValidationSummary" class="validation-summary-card hidden" role="alert" aria-live="assertive"></div>
 
             <div class="stage-actions">
               <button type="button" class="btn-secondary btn-prev-stage" id="stage7PrevBtn" data-target="stage-6">&larr;

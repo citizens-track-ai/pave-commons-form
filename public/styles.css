@@ -455,6 +455,135 @@ dialog::backdrop {
   color: #991b1b;
 }
 
+/* Validation Summary Card & Inline Errors */
+.validation-summary-card {
+  background-color: #fef2f2;
+  border: 1px solid #f87171;
+  border-left: 5px solid #dc2626;
+  border-radius: 8px;
+  padding: 1.15rem 1.35rem;
+  margin: 1.25rem 0;
+  box-shadow: 0 2px 4px rgba(220, 38, 38, 0.08);
+}
+
+.validation-summary-card.hidden {
+  display: none;
+}
+
+.validation-summary-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.validation-summary-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.validation-summary-title {
+  display: block;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.validation-summary-subtitle {
+  margin: 0.2rem 0 0 0;
+  font-size: 0.88rem;
+  color: #7f1d1d;
+}
+
+.validation-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.btn-validation-jump {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  background-color: #ffffff;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: #1e293b;
+  transition: all 0.15s ease;
+}
+
+.btn-validation-jump:hover {
+  background-color: #fff1f2;
+  border-color: #f43f5e;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.btn-validation-jump:active {
+  transform: translateY(1px);
+}
+
+.btn-validation-jump .jump-arrow {
+  color: #dc2626;
+  font-weight: bold;
+}
+
+.btn-validation-jump .jump-stage {
+  font-weight: 700;
+  color: #991b1b;
+}
+
+.btn-validation-jump .jump-field {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.btn-validation-jump .jump-desc {
+  color: #64748b;
+  font-size: 0.84rem;
+}
+
+/* Input error states */
+input.input-error,
+textarea.input-error,
+select.input-error,
+.rich-editor-wrapper.input-error {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2) !important;
+  animation: error-shake 0.3s ease;
+}
+
+.consent-checkbox-label.input-error {
+  outline: 2px solid #ef4444;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.field-error-text {
+  display: block;
+  font-size: 0.82rem;
+  color: #dc2626;
+  font-weight: 600;
+  margin-top: 0.35rem;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes error-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
 /* Edit Mode Banner */
 .edit-banner {
   background-color: #eff6ff;
